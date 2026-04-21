@@ -1,0 +1,9 @@
+{
+  "name": "shopcloud-db",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Database migration scripts for ShopCloud",
+  "dependencies": {
+    "pg": "^8.12.0"
+  }
+}

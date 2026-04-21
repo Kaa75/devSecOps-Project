@@ -1,0 +1,30 @@
+{
+  "name": "shopcloud",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "shared/jwt-middleware",
+    "services/catalog",
+    "services/cart",
+    "services/checkout",
+    "services/auth",
+    "services/admin",
+    "functions/invoice-lambda"
+  ],
+  "scripts": {
+    "migrate": "node db/migrate.js",
+    "lint": "eslint 'services/**/*.{js,ts}' 'functions/**/*.{js,ts}'",
+    "format": "prettier --write 'services/**/*.{js,ts,json}' 'functions/**/*.{js,ts,json}'",
+    "format:check": "prettier --check 'services/**/*.{js,ts,json}' 'functions/**/*.{js,ts,json}'",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

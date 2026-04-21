@@ -1,0 +1,161 @@
+name: CD — Development
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    name: Unit & Property-Based Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test --workspaces --if-present
+
+      - name: Run property-based tests
+        run: npm run test:pbt --workspaces --if-present
+
+  build-push:
+    name: Build & Push Images to ECR
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
+      IMAGE_TAG: dev-${{ github.sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.CD_DEV_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push catalog
+        run: |
+          docker build -t $ECR_REGISTRY/shopcloud/development/catalog:$IMAGE_TAG services/catalog
+          docker push $ECR_REGISTRY/shopcloud/development/catalog:$IMAGE_TAG
+
+      - name: Build and push cart
+        run: |
+          docker build -t $ECR_REGISTRY/shopcloud/development/cart:$IMAGE_TAG services/cart
+          docker push $ECR_REGISTRY/shopcloud/development/cart:$IMAGE_TAG
+
+      - name: Build and push checkout
+        run: |
+          docker build -t $ECR_REGISTRY/shopcloud/development/checkout:$IMAGE_TAG services/checkout
+          docker push $ECR_REGISTRY/shopcloud/development/checkout:$IMAGE_TAG
+
+      - name: Build and push auth
+        run: |
+          docker build -t $ECR_REGISTRY/shopcloud/development/auth:$IMAGE_TAG services/auth
+          docker push $ECR_REGISTRY/shopcloud/development/auth:$IMAGE_TAG
+
+      - name: Build and push admin
+        run: |
+          docker build -t $ECR_REGISTRY/shopcloud/development/admin:$IMAGE_TAG services/admin
+          docker push $ECR_REGISTRY/shopcloud/development/admin:$IMAGE_TAG
+
+      - name: Build and push invoice-lambda
+        run: |
+          docker build -t $ECR_REGISTRY/shopcloud/development/invoice-lambda:$IMAGE_TAG functions/invoice-lambda
+          docker push $ECR_REGISTRY/shopcloud/development/invoice-lambda:$IMAGE_TAG
+
+  deploy-dev:
+    name: Deploy to Development EKS
+    runs-on: ubuntu-latest
+    needs: build-push
+    env:
+      ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
+      IMAGE_TAG: dev-${{ github.sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.CD_DEV_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Update kubeconfig for development cluster
+        run: aws eks update-kubeconfig --name shopcloud-development --region eu-west-1
+
+      - name: Update catalog image
+        run: kubectl set image deployment/catalog catalog=$ECR_REGISTRY/shopcloud/development/catalog:$IMAGE_TAG -n shopcloud
+
+      - name: Update cart image
+        run: kubectl set image deployment/cart cart=$ECR_REGISTRY/shopcloud/development/cart:$IMAGE_TAG -n shopcloud
+
+      - name: Update checkout image
+        run: kubectl set image deployment/checkout checkout=$ECR_REGISTRY/shopcloud/development/checkout:$IMAGE_TAG -n shopcloud
+
+      - name: Update auth image
+        run: kubectl set image deployment/auth auth=$ECR_REGISTRY/shopcloud/development/auth:$IMAGE_TAG -n shopcloud
+
+      - name: Update admin image
+        run: kubectl set image deployment/admin admin=$ECR_REGISTRY/shopcloud/development/admin:$IMAGE_TAG -n shopcloud
+
+      - name: Apply manifest changes
+        run: kubectl apply -f infra/k8s/ -n shopcloud
+
+      - name: Wait for catalog rollout
+        run: kubectl rollout status deployment/catalog -n shopcloud
+
+      - name: Wait for cart rollout
+        run: kubectl rollout status deployment/cart -n shopcloud
+
+      - name: Wait for checkout rollout
+        run: kubectl rollout status deployment/checkout -n shopcloud
+
+      - name: Wait for auth rollout
+        run: kubectl rollout status deployment/auth -n shopcloud
+
+      - name: Wait for admin rollout
+        run: kubectl rollout status deployment/admin -n shopcloud
+
+  integration-tests:
+    name: Integration & Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy-dev
+    steps:
+      - name: Health check — catalog
+        run: |
+          curl --fail --retry 5 --retry-delay 10 \
+            ${{ secrets.DEV_ALB_URL }}/catalog/health
+
+      - name: Health check — cart
+        run: |
+          curl --fail --retry 5 --retry-delay 10 \
+            ${{ secrets.DEV_ALB_URL }}/cart/health
+
+      - name: Health check — checkout
+        run: |
+          curl --fail --retry 5 --retry-delay 10 \
+            ${{ secrets.DEV_ALB_URL }}/checkout/health
+
+      - name: Health check — auth
+        run: |
+          curl --fail --retry 5 --retry-delay 10 \
+            ${{ secrets.DEV_ALB_URL }}/auth/health
