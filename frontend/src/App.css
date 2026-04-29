@@ -533,3 +533,246 @@ button:disabled {
     padding: 20px;
   }
 }
+
+/* ─── Login page ─── */
+
+.login-page {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  overflow: hidden;
+}
+
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: min(460px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  padding: 36px 32px 28px;
+  box-shadow: var(--shadow);
+}
+
+.login-brand {
+  margin-bottom: 24px;
+}
+
+.login-title {
+  margin: 6px 0 8px;
+  font-size: clamp(1.8rem, 5vw, 2.4rem);
+  line-height: 1;
+}
+
+.login-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.login-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+
+.tab-btn {
+  padding: 9px 8px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab-btn.active {
+  background: var(--panel);
+  color: var(--bg-ink);
+  box-shadow: 0 1px 4px rgba(57, 37, 16, 0.1);
+}
+
+.tab-btn:hover:not(.active) {
+  color: var(--bg-ink);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-field label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.login-field input {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  color: var(--bg-ink);
+  background: #fff;
+  transition: border-color 0.15s;
+}
+
+.login-field input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.login-submit {
+  margin-top: 4px;
+  padding: 13px;
+  font-size: 1rem;
+  border-radius: 12px;
+  width: 100%;
+}
+
+.login-error {
+  background: #fff1f0;
+  border: 1px solid #ffc9c9;
+  color: var(--danger);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.login-success {
+  background: #f0fff8;
+  border: 1px solid #b2f2d4;
+  color: var(--primary-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.login-notice {
+  margin: 14px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.login-footer {
+  margin: 18px 0 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.15s;
+}
+
+.link-btn:hover {
+  text-decoration-color: currentColor;
+}
+
+/* ─── Auth-related additions to topbar ─── */
+
+.user-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.user-email {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-badge,
+.demo-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.admin-badge {
+  background: #fff3e0;
+  color: var(--accent);
+  border: 1px solid #ffddb5;
+}
+
+.demo-badge {
+  background: #f0f4ff;
+  color: #4a6cf7;
+  border: 1px solid #c7d4ff;
+}
+
+.logout-btn {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  margin-left: auto;
+}
+
+.pill-ok {
+  background: #edfaf4;
+  border-color: #b2e8cf;
+  color: var(--primary-strong);
+}
+
+.pill-warn {
+  background: #fff8ee;
+  border-color: #ffddb5;
+  color: #8a5200;
+}
+
+/* ─── Product category tag ─── */
+
+.product-category {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  align-self: flex-start;
+}

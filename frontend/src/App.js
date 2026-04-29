@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import './App.css';
+import LoginPage, { AUTH_STORAGE_KEY } from './LoginPage';
 
 const DEMO_PRODUCTS = [
-  { id: 1, name: 'Laptop Pro', price: 1299.99, description: 'High-performance laptop' },
-  { id: 2, name: 'Wireless Mouse', price: 49.99, description: 'Ergonomic design' },
-  { id: 3, name: 'Mechanical Keyboard', price: 149.99, description: 'RGB backlit' },
-  { id: 4, name: 'USB-C Hub', price: 79.99, description: '7-in-1 hub' },
-  { id: 5, name: 'Monitor 4K', price: 599.99, description: '27-inch display' },
+  { id: 1, name: 'Laptop Pro', price: 1299.99, category: 'Electronics', description: 'High-performance laptop for professionals' },
+  { id: 2, name: 'Wireless Mouse', price: 49.99, category: 'Accessories', description: 'Ergonomic design, 12-month battery life' },
+  { id: 3, name: 'Mechanical Keyboard', price: 149.99, category: 'Accessories', description: 'RGB backlit, tactile switches' },
+  { id: 4, name: 'USB-C Hub', price: 79.99, category: 'Accessories', description: '7-in-1 hub with 4K HDMI and PD charging' },
+  { id: 5, name: 'Monitor 4K', price: 599.99, category: 'Electronics', description: '27-inch IPS display, 144Hz refresh rate' },
+  { id: 6, name: 'Webcam HD', price: 89.99, category: 'Electronics', description: '1080p 60fps with built-in noise cancellation' },
 ];
 
 const CATALOG_API = 'http://a98f519c4af93425b99b2dc81d16f3e9-1395133919.us-east-1.elb.amazonaws.com';
@@ -16,14 +18,8 @@ const CHECKOUT_API = 'http://a185d62bc3d6f405085e9a71e05d3a57-285844831.us-east-
 const CART_STORAGE_KEY = 'shopcloud-cart-v2';
 
 function normalizeProducts(payload) {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-
-  if (payload && Array.isArray(payload.products)) {
-    return payload.products;
-  }
-
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.products)) return payload.products;
   return [];
 }
 
@@ -31,7 +27,18 @@ function toCurrency(value) {
   return `$${Number(value).toFixed(2)}`;
 }
 
+function getInitialAuth() {
+  try {
+    const saved = localStorage.getItem(AUTH_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
 function App() {
+  const [auth, setAuth] = useState(getInitialAuth);
+
   const [products, setProducts] = useState(DEMO_PRODUCTS);
   const [cart, setCart] = useState(() => {
     try {
@@ -51,31 +58,44 @@ function App() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [lastOrderId, setLastOrderId] = useState('');
 
+  const handleAuth = (authData) => {
+    setAuth(authData);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    setAuth(null);
+    setCart([]);
+  };
+
   useEffect(() => {
-    fetchProductsFromBackend();
-  }, []);
+    if (auth) fetchProductsFromBackend();
+  }, [auth]);
 
   useEffect(() => {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
   }, [cart]);
 
   useEffect(() => {
-    if (!toast) {
-      return undefined;
-    }
-
+    if (!toast) return undefined;
     const timer = setTimeout(() => setToast(null), 2200);
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const authHeaders = () => {
+    if (auth?.token && auth.token !== 'demo') {
+      return { Authorization: `Bearer ${auth.token}` };
+    }
+    return {};
+  };
+
   const fetchProductsFromBackend = async () => {
     setIsLoadingProducts(true);
-
     try {
       const response = await axios.get(`${CATALOG_API}/products?limit=24`, {
-        timeout: 2000
+        timeout: 2000,
+        headers: authHeaders(),
       });
-
       const normalized = normalizeProducts(response.data);
       if (normalized.length > 0) {
         setProducts(normalized);
@@ -94,9 +114,8 @@ function App() {
 
   const categories = useMemo(() => {
     const values = products
-      .map((product) => product.category)
-      .filter((value) => typeof value === 'string' && value.trim() !== '');
-
+      .map((p) => p.category)
+      .filter((v) => typeof v === 'string' && v.trim() !== '');
     return ['all', ...Array.from(new Set(values))];
   }, [products]);
 
@@ -104,14 +123,8 @@ function App() {
     const query = searchQuery.trim().toLowerCase();
     let output = products.filter((product) => {
       const byCategory = categoryFilter === 'all' || product.category === categoryFilter;
-      if (!byCategory) {
-        return false;
-      }
-
-      if (!query) {
-        return true;
-      }
-
+      if (!byCategory) return false;
+      if (!query) return true;
       const name = String(product.name || '').toLowerCase();
       const description = String(product.description || '').toLowerCase();
       return name.includes(query) || description.includes(query);
@@ -130,7 +143,6 @@ function App() {
       default:
         break;
     }
-
     return output;
   }, [products, searchQuery, categoryFilter, sortBy]);
 
@@ -138,7 +150,6 @@ function App() {
     () => cart.reduce((count, item) => count + item.quantity, 0),
     [cart]
   );
-
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0),
     [cart]
@@ -146,43 +157,38 @@ function App() {
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
 
-  const pushToast = (message, tone = 'ok') => {
-    setToast({ message, tone });
-  };
+  const pushToast = (message, tone = 'ok') => setToast({ message, tone });
 
   const addToCart = async (product) => {
     setCart((current) => {
       const existing = current.find((item) => item.id === product.id);
       if (existing) {
-        return current.map((item) => (
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        ));
+        return current.map((item) =>
+          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        );
       }
-
       return [...current, { ...product, quantity: 1 }];
     });
     pushToast(`${product.name} added to cart`);
 
     try {
-      await axios.post(`${CART_API}/cart/add-item`, {
-        productId: product.id,
-        quantity: 1
-      }, { timeout: 2000 });
+      await axios.post(
+        `${CART_API}/cart/add-item`,
+        { productId: product.id, quantity: 1 },
+        { timeout: 2000, headers: authHeaders() }
+      );
     } catch {
-      pushToast('Using local cart (sync unavailable)', 'warn');
+      // Local cart remains the source of truth.
     }
   };
 
   const updateQuantity = (productId, delta) => {
-    setCart((current) => current
-      .map((item) => (
-        item.id === productId
-          ? { ...item, quantity: item.quantity + delta }
-          : item
-      ))
-      .filter((item) => item.quantity > 0)
+    setCart((current) =>
+      current
+        .map((item) =>
+          item.id === productId ? { ...item, quantity: item.quantity + delta } : item
+        )
+        .filter((item) => item.quantity > 0)
     );
   };
 
@@ -190,22 +196,18 @@ function App() {
     setCart((current) => current.filter((item) => item.id !== productId));
   };
 
-  const clearCart = () => {
-    setCart([]);
-  };
+  const clearCart = () => setCart([]);
 
   const openCheckout = () => {
     if (cart.length === 0) {
       pushToast('Your cart is empty', 'warn');
       return;
     }
-
     setShowCheckout(true);
   };
 
   const placeOrder = async () => {
     setIsCheckingOut(true);
-
     try {
       const orderData = {
         items: cart,
@@ -215,15 +217,14 @@ function App() {
         timestamp: new Date().toISOString(),
         status: 'pending',
       };
-
       try {
         await axios.post(`${CHECKOUT_API}/checkout`, orderData, {
-          timeout: 3000
+          timeout: 3000,
+          headers: authHeaders(),
         });
       } catch {
-        // Local success fallback keeps checkout flow smooth.
+        // Fallback: order recorded locally.
       }
-
       const orderId = Math.random().toString(36).slice(2, 11).toUpperCase();
       setLastOrderId(orderId);
       setCart([]);
@@ -235,6 +236,10 @@ function App() {
       setIsCheckingOut(false);
     }
   };
+
+  if (!auth) {
+    return <LoginPage onAuth={handleAuth} />;
+  }
 
   return (
     <div className="App">
@@ -252,6 +257,12 @@ function App() {
           </div>
 
           <div className="summary-card">
+            <div className="user-info">
+              <span className="user-email">{auth.email}</span>
+              {auth.isAdmin && <span className="admin-badge">Admin</span>}
+              {auth.demo && <span className="demo-badge">Demo</span>}
+              <button className="logout-btn ghost" onClick={handleLogout}>Sign out</button>
+            </div>
             <p>Items in cart</p>
             <strong>{cartItemsCount}</strong>
             <span>{toCurrency(subtotal)} subtotal</span>
@@ -265,6 +276,9 @@ function App() {
             <span className="pill">Catalog: {usingDemoData ? 'Demo mode' : 'Live mode'}</span>
             <span className="pill">Cart API: Best effort sync</span>
             <span className="pill">Checkout: Resilient fallback</span>
+            <span className={`pill pill-auth${auth.demo ? ' pill-warn' : ' pill-ok'}`}>
+              Auth: {auth.demo ? 'Demo (service offline)' : auth.isAdmin ? 'Admin JWT' : 'Cognito JWT'}
+            </span>
           </div>
           {lastOrderId && (
             <p className="order-note">Last order: #{lastOrderId}</p>
@@ -277,17 +291,16 @@ function App() {
             <input
               id="search"
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Try laptop, keyboard, hub..."
             />
           </div>
-
           <div className="field">
             <label htmlFor="category">Category</label>
             <select
               id="category"
               value={categoryFilter}
-              onChange={(event) => setCategoryFilter(event.target.value)}
+              onChange={(e) => setCategoryFilter(e.target.value)}
             >
               {categories.map((category) => (
                 <option key={category} value={category}>
@@ -296,13 +309,12 @@ function App() {
               ))}
             </select>
           </div>
-
           <div className="field">
             <label htmlFor="sort">Sort</label>
             <select
               id="sort"
               value={sortBy}
-              onChange={(event) => setSortBy(event.target.value)}
+              onChange={(e) => setSortBy(e.target.value)}
             >
               <option value="featured">Featured</option>
               <option value="price-low">Price: Low to High</option>
@@ -316,18 +328,18 @@ function App() {
           <section className="products">
             <div className="section-title-row">
               <h2>Products</h2>
-              <span>{isLoadingProducts ? 'Loading...' : `${visibleProducts.length} shown`}</span>
+              <span>{isLoadingProducts ? 'Loading…' : `${visibleProducts.length} shown`}</span>
             </div>
-
             <div className="grid">
               {visibleProducts.map((product) => (
                 <article key={product.id} className="product-card">
                   <h3>{product.name}</h3>
                   <p className="price">{toCurrency(product.price)}</p>
                   <p className="desc">{product.description || 'No description available.'}</p>
-                  <button onClick={() => addToCart(product)}>
-                    Add to cart
-                  </button>
+                  {product.category && (
+                    <span className="product-category">{product.category}</span>
+                  )}
+                  <button onClick={() => addToCart(product)}>Add to cart</button>
                 </article>
               ))}
             </div>
@@ -350,13 +362,11 @@ function App() {
                         <p className="cart-name">{item.name}</p>
                         <p className="cart-price">{toCurrency(item.price)}</p>
                       </div>
-
                       <div className="qty-controls">
                         <button onClick={() => updateQuantity(item.id, -1)}>-</button>
                         <span>{item.quantity}</span>
                         <button onClick={() => updateQuantity(item.id, 1)}>+</button>
                       </div>
-
                       <button
                         className="remove-btn"
                         onClick={() => removeFromCart(item.id)}
@@ -370,7 +380,7 @@ function App() {
 
                 <div className="cart-totals">
                   <p><span>Subtotal</span><strong>{toCurrency(subtotal)}</strong></p>
-                  <p><span>Tax</span><strong>{toCurrency(tax)}</strong></p>
+                  <p><span>Tax (8%)</span><strong>{toCurrency(tax)}</strong></p>
                   <p className="grand-total"><span>Total</span><strong>{toCurrency(total)}</strong></p>
                 </div>
 
@@ -389,32 +399,29 @@ function App() {
               <h2>Checkout preview</h2>
               <button className="ghost" onClick={() => setShowCheckout(false)}>Close</button>
             </div>
-
             <div className="checkout-grid">
               <div>
                 <h3>Order lines</h3>
                 {cart.map((item) => (
                   <div key={item.id} className="review-item">
-                    <span>{item.name} x {item.quantity}</span>
+                    <span>{item.name} × {item.quantity}</span>
                     <span>{toCurrency(Number(item.price) * item.quantity)}</span>
                   </div>
                 ))}
               </div>
-
               <div>
                 <h3>Payment summary</h3>
                 <div className="checkout-summary">
                   <p><span>Subtotal</span><strong>{toCurrency(subtotal)}</strong></p>
-                  <p><span>Tax</span><strong>{toCurrency(tax)}</strong></p>
+                  <p><span>Tax (8%)</span><strong>{toCurrency(tax)}</strong></p>
                   <p className="grand-total"><span>Total</span><strong>{toCurrency(total)}</strong></p>
                 </div>
-
                 <button
                   className="primary place-order"
                   onClick={placeOrder}
                   disabled={isCheckingOut}
                 >
-                  {isCheckingOut ? 'Processing order...' : 'Place order'}
+                  {isCheckingOut ? 'Processing order…' : 'Place order'}
                 </button>
               </div>
             </div>
