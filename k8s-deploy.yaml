@@ -1,0 +1,194 @@
+---
+# Admin Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin
+  namespace: shopcloud
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 3000
+  selector:
+    app: admin
+
+---
+# Admin Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin
+  namespace: shopcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin
+  template:
+    metadata:
+      labels:
+        app: admin
+    spec:
+      containers:
+        - name: admin
+          image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/admin:latest
+          ports:
+            - containerPort: 3000
+          imagePullPolicy: Always
+
+---
+# Auth Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth
+  namespace: shopcloud
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 3000
+  selector:
+    app: auth
+
+---
+# Auth Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  namespace: shopcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      containers:
+        - name: auth
+          image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/auth:latest
+          ports:
+            - containerPort: 3000
+          imagePullPolicy: Always
+
+---
+# Cart Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart
+  namespace: shopcloud
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 3000
+  selector:
+    app: cart
+
+---
+# Cart Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart
+  namespace: shopcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cart
+  template:
+    metadata:
+      labels:
+        app: cart
+    spec:
+      containers:
+        - name: cart
+          image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/cart:latest
+          ports:
+            - containerPort: 3000
+          imagePullPolicy: Always
+
+---
+# Catalog Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog
+  namespace: shopcloud
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 3000
+  selector:
+    app: catalog
+
+---
+# Catalog Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+  namespace: shopcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog
+  template:
+    metadata:
+      labels:
+        app: catalog
+    spec:
+      containers:
+        - name: catalog
+          image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/catalog:latest
+          ports:
+            - containerPort: 3000
+          imagePullPolicy: Always
+
+---
+# Checkout Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout
+  namespace: shopcloud
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 3000
+  selector:
+    app: checkout
+
+---
+# Checkout Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: shopcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      containers:
+        - name: checkout
+          image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/checkout:latest
+          ports:
+            - containerPort: 3000
+          imagePullPolicy: Always

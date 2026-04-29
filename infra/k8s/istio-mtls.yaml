@@ -1,0 +1,90 @@
+# Istio mTLS configuration for the shopcloud namespace
+#
+# Prerequisites:
+#   1. Istio must be installed on the cluster first:
+#        istioctl install --set profile=default
+#   2. The shopcloud namespace must be labeled for Istio sidecar injection:
+#        kubectl label namespace shopcloud istio-injection=enabled
+#      (This label is already present in namespace.yaml)
+#   3. STRICT mode rejects all plaintext inter-service traffic — any pod
+#      without an Istio sidecar will be unable to communicate with services
+#      in this namespace.
+#
+# Requirements: 12.4
+
+---
+# Namespace-wide PeerAuthentication: enforce STRICT mTLS for all pods
+# in the shopcloud namespace. Plaintext traffic is rejected.
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: shopcloud
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# DestinationRule: catalog — enforce ISTIO_MUTUAL TLS for outbound traffic
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: catalog-mtls
+  namespace: shopcloud
+spec:
+  host: catalog.shopcloud.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+
+---
+# DestinationRule: cart — enforce ISTIO_MUTUAL TLS for outbound traffic
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: cart-mtls
+  namespace: shopcloud
+spec:
+  host: cart.shopcloud.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+
+---
+# DestinationRule: checkout — enforce ISTIO_MUTUAL TLS for outbound traffic
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: checkout-mtls
+  namespace: shopcloud
+spec:
+  host: checkout.shopcloud.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+
+---
+# DestinationRule: auth — enforce ISTIO_MUTUAL TLS for outbound traffic
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: auth-mtls
+  namespace: shopcloud
+spec:
+  host: auth.shopcloud.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+
+---
+# DestinationRule: admin — enforce ISTIO_MUTUAL TLS for outbound traffic
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: admin-mtls
+  namespace: shopcloud
+spec:
+  host: admin.shopcloud.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL

@@ -1,0 +1,307 @@
+# NetworkPolicies for the shopcloud namespace
+# Enforces least-privilege pod-to-pod communication (Requirement 12.8)
+#
+# Strategy:
+#   1. Default-deny all ingress and egress in the shopcloud namespace
+#   2. Explicitly allow only required traffic flows per service
+#   3. ALB ingress is permitted via the aws-load-balancer-controller pods in kube-system
+#   4. DNS egress (port 53 UDP/TCP) is allowed for all pods
+
+---
+# 1. Default-deny all ingress in the shopcloud namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: shopcloud
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# 2. Default-deny all egress in the shopcloud namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: shopcloud
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+---
+# 3. Allow all pods to reach kube-dns (port 53 UDP/TCP)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: shopcloud
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# 4. Catalog Service — ingress from Public ALB only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: catalog-ingress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: catalog
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: aws-load-balancer-controller
+      ports:
+        - port: 3000
+          protocol: TCP
+
+---
+# 5. Catalog Service — egress to RDS (port 5432)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: catalog-egress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: catalog
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 5432
+          protocol: TCP
+
+---
+# 6. Cart Service — ingress from Public ALB only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cart-ingress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: cart
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: aws-load-balancer-controller
+      ports:
+        - port: 3000
+          protocol: TCP
+
+---
+# 7. Cart Service — egress to Redis (port 6379)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cart-egress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: cart
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 6379
+          protocol: TCP
+
+---
+# 8. Checkout Service — ingress from Public ALB only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: checkout-ingress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: checkout
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: aws-load-balancer-controller
+      ports:
+        - port: 3000
+          protocol: TCP
+    # Allow ingress from catalog (not needed here — checkout calls catalog, not the reverse)
+    # Inter-service: allow catalog to receive from checkout (see catalog-allow-checkout-ingress below)
+
+---
+# 9. Checkout Service — egress to RDS, Redis, SQS (HTTPS), and Catalog (port 80)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: checkout-egress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: checkout
+  policyTypes:
+    - Egress
+  egress:
+    # RDS
+    - ports:
+        - port: 5432
+          protocol: TCP
+    # Redis
+    - ports:
+        - port: 6379
+          protocol: TCP
+    # SQS via HTTPS (AWS endpoint)
+    - ports:
+        - port: 443
+          protocol: TCP
+    # Catalog service for stock checks (ClusterIP port 80)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: catalog
+      ports:
+        - port: 80
+          protocol: TCP
+
+---
+# 10. Allow Catalog to receive ingress from Checkout (stock check calls)
+# NetworkPolicy ports match the pod's container port (3000), not the Service port (80)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: catalog-allow-checkout-ingress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: catalog
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: checkout
+      ports:
+        - port: 3000
+          protocol: TCP
+
+---
+# 11. Auth Service — ingress from Public ALB only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-ingress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: auth
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: aws-load-balancer-controller
+      ports:
+        - port: 3000
+          protocol: TCP
+
+---
+# 12. Auth Service — egress to Cognito API (HTTPS port 443)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-egress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: auth
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 443
+          protocol: TCP
+
+---
+# 13. Admin Service — ingress from Internal ALB only; no public ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: admin-ingress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: admin
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: aws-load-balancer-controller
+      ports:
+        - port: 3000
+          protocol: TCP
+
+---
+# 14. Admin Service — egress to RDS (port 5432)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: admin-egress
+  namespace: shopcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: admin
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 5432
+          protocol: TCP
