@@ -44,7 +44,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.CI_ROLE_ARN }}
-          aws-region: eu-west-1
+          aws-region: us-east-1
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -52,51 +52,59 @@ jobs:
 
       - name: Build and push catalog image
         env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/catalog:$IMAGE_TAG services/catalog
-          docker push $ECR_REGISTRY/shopcloud/development/catalog:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/catalog:$IMAGE_TAG services/catalog
+          docker push $ECR_REGISTRY/shopcloud/default/catalog:$IMAGE_TAG
 
       - name: Build and push cart image
         env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/cart:$IMAGE_TAG services/cart
-          docker push $ECR_REGISTRY/shopcloud/development/cart:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/cart:$IMAGE_TAG services/cart
+          docker push $ECR_REGISTRY/shopcloud/default/cart:$IMAGE_TAG
 
       - name: Build and push checkout image
         env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/checkout:$IMAGE_TAG services/checkout
-          docker push $ECR_REGISTRY/shopcloud/development/checkout:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/checkout:$IMAGE_TAG services/checkout
+          docker push $ECR_REGISTRY/shopcloud/default/checkout:$IMAGE_TAG
 
       - name: Build and push auth image
         env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/auth:$IMAGE_TAG services/auth
-          docker push $ECR_REGISTRY/shopcloud/development/auth:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/auth:$IMAGE_TAG services/auth
+          docker push $ECR_REGISTRY/shopcloud/default/auth:$IMAGE_TAG
 
       - name: Build and push admin image
         env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/admin:$IMAGE_TAG services/admin
-          docker push $ECR_REGISTRY/shopcloud/development/admin:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/admin:$IMAGE_TAG services/admin
+          docker push $ECR_REGISTRY/shopcloud/default/admin:$IMAGE_TAG
+
+      - name: Build and push frontend image
+        env:
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/shopcloud/default/frontend:$IMAGE_TAG frontend
+          docker push $ECR_REGISTRY/shopcloud/default/frontend:$IMAGE_TAG
 
       - name: Build and push invoice-lambda image
         env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/invoice-lambda:$IMAGE_TAG functions/invoice-lambda
-          docker push $ECR_REGISTRY/shopcloud/development/invoice-lambda:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/invoice-lambda:$IMAGE_TAG functions/invoice-lambda
+          docker push $ECR_REGISTRY/shopcloud/default/invoice-lambda:$IMAGE_TAG
 
   security-scan:
     name: Security Scanning
@@ -110,7 +118,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.CI_ROLE_ARN }}
-          aws-region: eu-west-1
+          aws-region: us-east-1
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -118,42 +126,49 @@ jobs:
       - name: Trivy scan — catalog
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com/shopcloud/development/catalog:${{ github.sha }}
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/catalog:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
       - name: Trivy scan — cart
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com/shopcloud/development/cart:${{ github.sha }}
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/cart:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
       - name: Trivy scan — checkout
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com/shopcloud/development/checkout:${{ github.sha }}
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/checkout:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
       - name: Trivy scan — auth
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com/shopcloud/development/auth:${{ github.sha }}
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/auth:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
       - name: Trivy scan — admin
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com/shopcloud/development/admin:${{ github.sha }}
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/admin:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+      - name: Trivy scan — frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/frontend:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
       - name: Trivy scan — invoice-lambda
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com/shopcloud/development/invoice-lambda:${{ github.sha }}
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/invoice-lambda:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 

@@ -1,4 +1,4 @@
-name: CD — Development
+name: CD — Deploy
 
 on:
   push:
@@ -37,8 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     env:
-      ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
-      IMAGE_TAG: dev-${{ github.sha }}
+      ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+      IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,48 +47,53 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.CD_DEV_ROLE_ARN }}
-          aws-region: eu-west-1
+          aws-region: us-east-1
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push catalog
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/catalog:$IMAGE_TAG services/catalog
-          docker push $ECR_REGISTRY/shopcloud/development/catalog:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/catalog:$IMAGE_TAG services/catalog
+          docker push $ECR_REGISTRY/shopcloud/default/catalog:$IMAGE_TAG
 
       - name: Build and push cart
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/cart:$IMAGE_TAG services/cart
-          docker push $ECR_REGISTRY/shopcloud/development/cart:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/cart:$IMAGE_TAG services/cart
+          docker push $ECR_REGISTRY/shopcloud/default/cart:$IMAGE_TAG
 
       - name: Build and push checkout
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/checkout:$IMAGE_TAG services/checkout
-          docker push $ECR_REGISTRY/shopcloud/development/checkout:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/checkout:$IMAGE_TAG services/checkout
+          docker push $ECR_REGISTRY/shopcloud/default/checkout:$IMAGE_TAG
 
       - name: Build and push auth
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/auth:$IMAGE_TAG services/auth
-          docker push $ECR_REGISTRY/shopcloud/development/auth:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/auth:$IMAGE_TAG services/auth
+          docker push $ECR_REGISTRY/shopcloud/default/auth:$IMAGE_TAG
 
       - name: Build and push admin
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/admin:$IMAGE_TAG services/admin
-          docker push $ECR_REGISTRY/shopcloud/development/admin:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/admin:$IMAGE_TAG services/admin
+          docker push $ECR_REGISTRY/shopcloud/default/admin:$IMAGE_TAG
+
+      - name: Build and push frontend
+        run: |
+          docker build -t $ECR_REGISTRY/shopcloud/default/frontend:$IMAGE_TAG frontend
+          docker push $ECR_REGISTRY/shopcloud/default/frontend:$IMAGE_TAG
 
       - name: Build and push invoice-lambda
         run: |
-          docker build -t $ECR_REGISTRY/shopcloud/development/invoice-lambda:$IMAGE_TAG functions/invoice-lambda
-          docker push $ECR_REGISTRY/shopcloud/development/invoice-lambda:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/shopcloud/default/invoice-lambda:$IMAGE_TAG functions/invoice-lambda
+          docker push $ECR_REGISTRY/shopcloud/default/invoice-lambda:$IMAGE_TAG
 
-  deploy-dev:
-    name: Deploy to Development EKS
+  deploy:
+    name: Deploy to EKS
     runs-on: ubuntu-latest
     needs: build-push
     env:
-      ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com
-      IMAGE_TAG: dev-${{ github.sha }}
+      ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+      IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -97,65 +102,57 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.CD_DEV_ROLE_ARN }}
-          aws-region: eu-west-1
+          aws-region: us-east-1
 
-      - name: Update kubeconfig for development cluster
-        run: aws eks update-kubeconfig --name shopcloud-development --region eu-west-1
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name shopcloud-default --region us-east-1
 
       - name: Update catalog image
-        run: kubectl set image deployment/catalog catalog=$ECR_REGISTRY/shopcloud/development/catalog:$IMAGE_TAG -n shopcloud
+        run: kubectl set image deployment/catalog catalog=$ECR_REGISTRY/shopcloud/default/catalog:$IMAGE_TAG -n shopcloud
 
       - name: Update cart image
-        run: kubectl set image deployment/cart cart=$ECR_REGISTRY/shopcloud/development/cart:$IMAGE_TAG -n shopcloud
+        run: kubectl set image deployment/cart cart=$ECR_REGISTRY/shopcloud/default/cart:$IMAGE_TAG -n shopcloud
 
       - name: Update checkout image
-        run: kubectl set image deployment/checkout checkout=$ECR_REGISTRY/shopcloud/development/checkout:$IMAGE_TAG -n shopcloud
+        run: kubectl set image deployment/checkout checkout=$ECR_REGISTRY/shopcloud/default/checkout:$IMAGE_TAG -n shopcloud
 
       - name: Update auth image
-        run: kubectl set image deployment/auth auth=$ECR_REGISTRY/shopcloud/development/auth:$IMAGE_TAG -n shopcloud
+        run: kubectl set image deployment/auth auth=$ECR_REGISTRY/shopcloud/default/auth:$IMAGE_TAG -n shopcloud
 
       - name: Update admin image
-        run: kubectl set image deployment/admin admin=$ECR_REGISTRY/shopcloud/development/admin:$IMAGE_TAG -n shopcloud
+        run: kubectl set image deployment/admin admin=$ECR_REGISTRY/shopcloud/default/admin:$IMAGE_TAG -n shopcloud
+
+      - name: Update frontend image
+        run: kubectl set image deployment/frontend frontend=$ECR_REGISTRY/shopcloud/default/frontend:$IMAGE_TAG -n shopcloud
 
       - name: Apply manifest changes
         run: kubectl apply -f infra/k8s/ -n shopcloud
 
-      - name: Wait for catalog rollout
-        run: kubectl rollout status deployment/catalog -n shopcloud
+      - name: Wait for rollouts
+        run: |
+          kubectl rollout status deployment/catalog  -n shopcloud --timeout=5m
+          kubectl rollout status deployment/cart     -n shopcloud --timeout=5m
+          kubectl rollout status deployment/checkout -n shopcloud --timeout=5m
+          kubectl rollout status deployment/auth     -n shopcloud --timeout=5m
+          kubectl rollout status deployment/admin    -n shopcloud --timeout=5m
+          kubectl rollout status deployment/frontend -n shopcloud --timeout=5m
 
-      - name: Wait for cart rollout
-        run: kubectl rollout status deployment/cart -n shopcloud
-
-      - name: Wait for checkout rollout
-        run: kubectl rollout status deployment/checkout -n shopcloud
-
-      - name: Wait for auth rollout
-        run: kubectl rollout status deployment/auth -n shopcloud
-
-      - name: Wait for admin rollout
-        run: kubectl rollout status deployment/admin -n shopcloud
-
-  integration-tests:
-    name: Integration & Smoke Tests
+  smoke-tests:
+    name: Smoke Tests
     runs-on: ubuntu-latest
-    needs: deploy-dev
+    needs: deploy
     steps:
       - name: Health check — catalog
-        run: |
-          curl --fail --retry 5 --retry-delay 10 \
-            ${{ secrets.DEV_ALB_URL }}/catalog/health
+        run: curl --fail --retry 5 --retry-delay 10 http://a98f519c4af93425b99b2dc81d16f3e9-1395133919.us-east-1.elb.amazonaws.com/health
 
       - name: Health check — cart
-        run: |
-          curl --fail --retry 5 --retry-delay 10 \
-            ${{ secrets.DEV_ALB_URL }}/cart/health
+        run: curl --fail --retry 5 --retry-delay 10 http://ada019bcb0d9c444ea2a19d3deb7742f-1636233805.us-east-1.elb.amazonaws.com/health
 
       - name: Health check — checkout
-        run: |
-          curl --fail --retry 5 --retry-delay 10 \
-            ${{ secrets.DEV_ALB_URL }}/checkout/health
+        run: curl --fail --retry 5 --retry-delay 10 http://a185d62bc3d6f405085e9a71e05d3a57-285844831.us-east-1.elb.amazonaws.com/health
 
       - name: Health check — auth
-        run: |
-          curl --fail --retry 5 --retry-delay 10 \
-            ${{ secrets.DEV_ALB_URL }}/auth/health
+        run: curl --fail --retry 5 --retry-delay 10 http://ae47051d5b5e74c65b6fca095b2dfbcb-2074452419.us-east-1.elb.amazonaws.com/health
+
+      - name: Health check — frontend
+        run: curl --fail --retry 5 --retry-delay 10 http://a0879b37672fa4da29fd26acaf2a6fb4-1508186753.us-east-1.elb.amazonaws.com/
