@@ -54,7 +54,7 @@ module "eks" {
   node_min_size       = local.config.eks_node_min
   node_max_size       = local.config.eks_node_max
   node_desired_size   = local.config.eks_node_min
-  node_instance_type  = "t3.small"
+  node_instance_type  = "m7i-flex.large"
   kms_key_arn         = module.kms.key_arn
 }
 
@@ -194,7 +194,7 @@ module "cloudfront" {
   environment  = terraform.workspace
   project      = var.project
   owner        = var.owner
-  alb_dns_name = "placeholder-alb.${var.aws_region}.elb.amazonaws.com"
+  alb_dns_name = "placeholder-alb.us-east-1.elb.amazonaws.com"
   waf_acl_arn  = module.waf.web_acl_arn
 }
 

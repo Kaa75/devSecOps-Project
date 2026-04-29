@@ -2,8 +2,8 @@ locals {
   env_config = {
     default = {
       is_production         = false
-      eks_node_min          = 3
-      eks_node_max          = 3
+      eks_node_min          = 1
+      eks_node_max          = 1
       rds_multi_az          = false
       elasticache_multi_az  = false
     }
@@ -17,7 +17,7 @@ locals {
     development = {
       is_production         = false
       eks_node_min          = 1
-      eks_node_max          = 3
+      eks_node_max          = 1
       rds_multi_az          = false
       elasticache_multi_az  = false
     }
