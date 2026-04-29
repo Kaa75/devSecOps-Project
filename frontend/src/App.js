@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import './App.css';
 
-// Demo products
 const DEMO_PRODUCTS = [
   { id: 1, name: 'Laptop Pro', price: 1299.99, description: 'High-performance laptop' },
   { id: 2, name: 'Wireless Mouse', price: 49.99, description: 'Ergonomic design' },
@@ -11,224 +10,421 @@ const DEMO_PRODUCTS = [
   { id: 5, name: 'Monitor 4K', price: 599.99, description: '27-inch display' },
 ];
 
+const CATALOG_API = 'http://a98f519c4af93425b99b2dc81d16f3e9-1395133919.us-east-1.elb.amazonaws.com';
+const CART_API = 'http://ada019bcb0d9c444ea2a19d3deb7742f-1636233805.us-east-1.elb.amazonaws.com';
+const CHECKOUT_API = 'http://a185d62bc3d6f405085e9a71e05d3a57-285844831.us-east-1.elb.amazonaws.com';
+const CART_STORAGE_KEY = 'shopcloud-cart-v2';
+
+function normalizeProducts(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload && Array.isArray(payload.products)) {
+    return payload.products;
+  }
+
+  return [];
+}
+
+function toCurrency(value) {
+  return `$${Number(value).toFixed(2)}`;
+}
+
 function App() {
   const [products, setProducts] = useState(DEMO_PRODUCTS);
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CART_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [usingDemoData, setUsingDemoData] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('featured');
+  const [toast, setToast] = useState(null);
   const [showCheckout, setShowCheckout] = useState(false);
-  const [orderPlaced, setOrderPlaced] = useState(false);
-
-  const CATALOG_API = 'http://a98f519c4af93425b99b2dc81d16f3e9-1395133919.us-east-1.elb.amazonaws.com';
-  const CART_API = 'http://ada019bcb0d9c444ea2a19d3deb7742f-1636233805.us-east-1.elb.amazonaws.com';
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [lastOrderId, setLastOrderId] = useState('');
 
   useEffect(() => {
-    // Try to fetch real products from backend but don't wait
     fetchProductsFromBackend();
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+  }, [cart]);
+
+  useEffect(() => {
+    if (!toast) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const fetchProductsFromBackend = async () => {
+    setIsLoadingProducts(true);
+
     try {
-      const response = await axios.get(`${CATALOG_API}/products`, {
+      const response = await axios.get(`${CATALOG_API}/products?limit=24`, {
         timeout: 2000
       });
-      if (response.data && response.data.length > 0) {
-        setProducts(response.data);
-        console.log('✅ Loaded products from backend');
+
+      const normalized = normalizeProducts(response.data);
+      if (normalized.length > 0) {
+        setProducts(normalized);
+        setUsingDemoData(false);
+      } else {
+        setProducts(DEMO_PRODUCTS);
+        setUsingDemoData(true);
       }
-    } catch (error) {
-      console.log('✅ Using demo products (backend connection: CORS/network)');
-      // Keep demo products - already set in state
+    } catch {
+      setProducts(DEMO_PRODUCTS);
+      setUsingDemoData(true);
+    } finally {
+      setIsLoadingProducts(false);
     }
   };
 
+  const categories = useMemo(() => {
+    const values = products
+      .map((product) => product.category)
+      .filter((value) => typeof value === 'string' && value.trim() !== '');
+
+    return ['all', ...Array.from(new Set(values))];
+  }, [products]);
+
+  const visibleProducts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    let output = products.filter((product) => {
+      const byCategory = categoryFilter === 'all' || product.category === categoryFilter;
+      if (!byCategory) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      const name = String(product.name || '').toLowerCase();
+      const description = String(product.description || '').toLowerCase();
+      return name.includes(query) || description.includes(query);
+    });
+
+    switch (sortBy) {
+      case 'price-low':
+        output = [...output].sort((a, b) => Number(a.price) - Number(b.price));
+        break;
+      case 'price-high':
+        output = [...output].sort((a, b) => Number(b.price) - Number(a.price));
+        break;
+      case 'name':
+        output = [...output].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        break;
+      default:
+        break;
+    }
+
+    return output;
+  }, [products, searchQuery, categoryFilter, sortBy]);
+
+  const cartItemsCount = useMemo(
+    () => cart.reduce((count, item) => count + item.quantity, 0),
+    [cart]
+  );
+
+  const subtotal = useMemo(
+    () => cart.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0),
+    [cart]
+  );
+  const tax = subtotal * 0.08;
+  const total = subtotal + tax;
+
+  const pushToast = (message, tone = 'ok') => {
+    setToast({ message, tone });
+  };
+
   const addToCart = async (product) => {
-    setCart([...cart, product]);
-    alert(`✅ ${product.name} added to cart!`);
-    
-    // Try to sync with backend (non-blocking)
+    setCart((current) => {
+      const existing = current.find((item) => item.id === product.id);
+      if (existing) {
+        return current.map((item) => (
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        ));
+      }
+
+      return [...current, { ...product, quantity: 1 }];
+    });
+    pushToast(`${product.name} added to cart`);
+
     try {
       await axios.post(`${CART_API}/cart/add-item`, {
         productId: product.id,
         quantity: 1
       }, { timeout: 2000 });
-      console.log('Synced with backend cart');
-    } catch (error) {
-      console.log('Using local cart');
+    } catch {
+      pushToast('Using local cart (sync unavailable)', 'warn');
     }
   };
 
-  const handleCheckout = async () => {
+  const updateQuantity = (productId, delta) => {
+    setCart((current) => current
+      .map((item) => (
+        item.id === productId
+          ? { ...item, quantity: item.quantity + delta }
+          : item
+      ))
+      .filter((item) => item.quantity > 0)
+    );
+  };
+
+  const removeFromCart = (productId) => {
+    setCart((current) => current.filter((item) => item.id !== productId));
+  };
+
+  const clearCart = () => {
+    setCart([]);
+  };
+
+  const openCheckout = () => {
     if (cart.length === 0) {
-      alert('Your cart is empty! Add some items first.');
+      pushToast('Your cart is empty', 'warn');
       return;
     }
+
     setShowCheckout(true);
   };
 
   const placeOrder = async () => {
+    setIsCheckingOut(true);
+
     try {
       const orderData = {
         items: cart,
-        total: cart.reduce((sum, item) => sum + item.price, 0),
+        subtotal,
+        tax,
+        total,
         timestamp: new Date().toISOString(),
-        status: 'pending'
+        status: 'pending',
       };
-      
-      console.log('Placing order:', orderData);
-      setOrderPlaced(true);
-      
-      // Try to send to backend checkout service
+
       try {
-        await axios.post('http://a17c31dc5de08446ca6f2f6c14cb20f3-1797265862.us-east-1.elb.amazonaws.com/checkout', orderData, {
+        await axios.post(`${CHECKOUT_API}/checkout`, orderData, {
           timeout: 3000
         });
-        console.log('Order synced with backend');
-      } catch (e) {
-        console.log('Order saved locally - backend connection issue');
+      } catch {
+        // Local success fallback keeps checkout flow smooth.
       }
-      
-      setTimeout(() => {
-        alert('✅ Order Placed Successfully!\n\n' + 
-              `Order ID: #${Math.random().toString(36).substr(2, 9).toUpperCase()}\n` +
-              `Total: $${orderData.total.toFixed(2)}\n` +
-              `Items: ${cart.length}\n\n` +
-              'Thank you for shopping at ShopCloud!');
-        setCart([]);
-        setShowCheckout(false);
-        setOrderPlaced(false);
-      }, 1000);
-    } catch (error) {
-      alert('❌ Failed to place order');
+
+      const orderId = Math.random().toString(36).slice(2, 11).toUpperCase();
+      setLastOrderId(orderId);
+      setCart([]);
+      setShowCheckout(false);
+      pushToast(`Order #${orderId} placed successfully`);
+    } catch {
+      pushToast('Failed to place order. Try again.', 'warn');
+    } finally {
+      setIsCheckingOut(false);
     }
   };
 
   return (
     <div className="App">
-      <header className="header">
-        <div className="container">
-          <h1>🛍️ ShopCloud E-commerce</h1>
-          <div className="nav">
-            <span>🛒 Cart ({cart.length})</span>
+      <div className="gradient-orb orb-a" />
+      <div className="gradient-orb orb-b" />
+
+      <header className="topbar">
+        <div className="container topbar-inner">
+          <div>
+            <p className="eyebrow">ShopCloud</p>
+            <h1>Modern Commerce Console</h1>
+            <p className="subhead">
+              Faster browsing, cleaner checkout, and practical controls for real shopping behavior.
+            </p>
+          </div>
+
+          <div className="summary-card">
+            <p>Items in cart</p>
+            <strong>{cartItemsCount}</strong>
+            <span>{toCurrency(subtotal)} subtotal</span>
           </div>
         </div>
       </header>
 
       <main className="container">
-        <section className="status">
-          <h2>✅ System Status: OPERATIONAL</h2>
-          <div className="services">
-            <div className="service">✓ Catalog API</div>
-            <div className="service">✓ Cart API</div>
-            <div className="service">✓ Auth API</div>
-            <div className="service">✓ Admin API</div>
-            <div className="service">✓ Checkout API</div>
+        <section className="status-card">
+          <div className="status-row">
+            <span className="pill">Catalog: {usingDemoData ? 'Demo mode' : 'Live mode'}</span>
+            <span className="pill">Cart API: Best effort sync</span>
+            <span className="pill">Checkout: Resilient fallback</span>
           </div>
-        </section>
-
-        <section className="products">
-          <h2>📦 Products ({products.length})</h2>
-          <div className="grid">
-            {products.map(product => (
-              <div key={product.id} className="product-card">
-                <h3>{product.name}</h3>
-                <p className="price">${product.price.toFixed(2)}</p>
-                {product.description && <p className="desc">{product.description}</p>}
-                <button onClick={() => addToCart(product)}>
-                  🛒 Add to Cart
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="cart">
-          <h2>🛒 Shopping Cart ({cart.length})</h2>
-          {cart.length === 0 ? (
-            <p>Your cart is empty. Add items from above!</p>
-          ) : (
-            <div className="cart-items">
-              <div className="cart-summary">
-                <p><strong>Total Items:</strong> {cart.length}</p>
-                <p><strong>Total Price:</strong> ${cart.reduce((sum, item) => sum + item.price, 0).toFixed(2)}</p>
-              </div>
-              <div className="items-list">
-                {cart.map((item, idx) => (
-                  <div key={idx} className="cart-item">
-                    <span>{item.name}</span>
-                    <span className="price">${item.price.toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
-              <button className="checkout-btn" onClick={handleCheckout}>
-                💳 Proceed to Checkout
-              </button>
-            </div>
+          {lastOrderId && (
+            <p className="order-note">Last order: #{lastOrderId}</p>
           )}
         </section>
 
-        {/* Checkout Modal */}
-        {showCheckout && (
-          <div className="modal-overlay">
-            <div className="modal">
-              <h2>💳 Order Summary</h2>
-              <div className="modal-content">
-                <div className="order-summary">
-                  <h3>Order Details</h3>
-                  <p><strong>Total Items:</strong> {cart.length}</p>
-                  <p><strong>Subtotal:</strong> ${cart.reduce((sum, item) => sum + item.price, 0).toFixed(2)}</p>
-                  <p><strong>Tax:</strong> ${(cart.reduce((sum, item) => sum + item.price, 0) * 0.08).toFixed(2)}</p>
-                  <p className="total"><strong>Total:</strong> ${(cart.reduce((sum, item) => sum + item.price, 0) * 1.08).toFixed(2)}</p>
-                </div>
-                
-                <div className="items-review">
-                  <h3>Items in Order</h3>
-                  {cart.map((item, idx) => (
-                    <div key={idx} className="review-item">
-                      <span>{item.name}</span>
-                      <span>${item.price.toFixed(2)}</span>
+        <section className="controls">
+          <div className="field">
+            <label htmlFor="search">Search products</label>
+            <input
+              id="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Try laptop, keyboard, hub..."
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="category">Category</label>
+            <select
+              id="category"
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value)}
+            >
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category === 'all' ? 'All categories' : category}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label htmlFor="sort">Sort</label>
+            <select
+              id="sort"
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+            >
+              <option value="featured">Featured</option>
+              <option value="price-low">Price: Low to High</option>
+              <option value="price-high">Price: High to Low</option>
+              <option value="name">Name</option>
+            </select>
+          </div>
+        </section>
+
+        <div className="layout">
+          <section className="products">
+            <div className="section-title-row">
+              <h2>Products</h2>
+              <span>{isLoadingProducts ? 'Loading...' : `${visibleProducts.length} shown`}</span>
+            </div>
+
+            <div className="grid">
+              {visibleProducts.map((product) => (
+                <article key={product.id} className="product-card">
+                  <h3>{product.name}</h3>
+                  <p className="price">{toCurrency(product.price)}</p>
+                  <p className="desc">{product.description || 'No description available.'}</p>
+                  <button onClick={() => addToCart(product)}>
+                    Add to cart
+                  </button>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <aside className="cart-panel">
+            <div className="section-title-row">
+              <h2>Cart</h2>
+              <span>{cartItemsCount} items</span>
+            </div>
+
+            {cart.length === 0 ? (
+              <p className="empty-state">Add products to start your order.</p>
+            ) : (
+              <>
+                <div className="cart-items">
+                  {cart.map((item) => (
+                    <div key={item.id} className="cart-item">
+                      <div>
+                        <p className="cart-name">{item.name}</p>
+                        <p className="cart-price">{toCurrency(item.price)}</p>
+                      </div>
+
+                      <div className="qty-controls">
+                        <button onClick={() => updateQuantity(item.id, -1)}>-</button>
+                        <span>{item.quantity}</span>
+                        <button onClick={() => updateQuantity(item.id, 1)}>+</button>
+                      </div>
+
+                      <button
+                        className="remove-btn"
+                        onClick={() => removeFromCart(item.id)}
+                        aria-label={`Remove ${item.name}`}
+                      >
+                        Remove
+                      </button>
                     </div>
                   ))}
                 </div>
 
-                <div className="shipping-info">
-                  <h3>📦 Shipping</h3>
-                  <p>Free shipping on all orders!</p>
-                  <p>✓ Estimated delivery: 3-5 business days</p>
+                <div className="cart-totals">
+                  <p><span>Subtotal</span><strong>{toCurrency(subtotal)}</strong></p>
+                  <p><span>Tax</span><strong>{toCurrency(tax)}</strong></p>
+                  <p className="grand-total"><span>Total</span><strong>{toCurrency(total)}</strong></p>
                 </div>
+
+                <div className="cart-actions">
+                  <button className="ghost" onClick={clearCart}>Clear cart</button>
+                  <button className="primary" onClick={openCheckout}>Checkout</button>
+                </div>
+              </>
+            )}
+          </aside>
+        </div>
+
+        {showCheckout && (
+          <section className="checkout-sheet">
+            <div className="checkout-head">
+              <h2>Checkout preview</h2>
+              <button className="ghost" onClick={() => setShowCheckout(false)}>Close</button>
+            </div>
+
+            <div className="checkout-grid">
+              <div>
+                <h3>Order lines</h3>
+                {cart.map((item) => (
+                  <div key={item.id} className="review-item">
+                    <span>{item.name} x {item.quantity}</span>
+                    <span>{toCurrency(Number(item.price) * item.quantity)}</span>
+                  </div>
+                ))}
               </div>
 
-              <div className="modal-buttons">
-                <button 
-                  className="btn-cancel" 
-                  onClick={() => setShowCheckout(false)}
-                  disabled={orderPlaced}
-                >
-                  Cancel
-                </button>
-                <button 
-                  className="btn-place-order" 
+              <div>
+                <h3>Payment summary</h3>
+                <div className="checkout-summary">
+                  <p><span>Subtotal</span><strong>{toCurrency(subtotal)}</strong></p>
+                  <p><span>Tax</span><strong>{toCurrency(tax)}</strong></p>
+                  <p className="grand-total"><span>Total</span><strong>{toCurrency(total)}</strong></p>
+                </div>
+
+                <button
+                  className="primary place-order"
                   onClick={placeOrder}
-                  disabled={orderPlaced}
+                  disabled={isCheckingOut}
                 >
-                  {orderPlaced ? '⏳ Processing...' : '✅ Place Order'}
+                  {isCheckingOut ? 'Processing order...' : 'Place order'}
                 </button>
               </div>
             </div>
-          </div>
+          </section>
         )}
-
-        <section className="info">
-          <h3>🚀 ShopCloud Architecture</h3>
-          <ul>
-            <li>✅ Frontend: React (running locally on port 3001)</li>
-            <li>✅ Backend: 5 Microservices (AWS EKS)</li>
-            <li>✅ Database: RDS PostgreSQL</li>
-            <li>✅ Cache: ElastiCache Redis</li>
-            <li>✅ Auth: Cognito</li>
-            <li>✅ Storage: S3</li>
-            <li>💡 Infrastructure: Terraform managed</li>
-          </ul>
-        </section>
       </main>
+
+      {toast && (
+        <div className={`toast ${toast.tone}`}>{toast.message}</div>
+      )}
     </div>
   );
 }
