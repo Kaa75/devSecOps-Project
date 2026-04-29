@@ -11,7 +11,7 @@ resource "aws_cloudfront_distribution" "this" {
   is_ipv6_enabled = true
   price_class     = "PriceClass_100"
   web_acl_id      = var.waf_acl_arn
-  default_root_object = "health"
+  default_root_object = "index.html"
 
   origin {
     domain_name = var.alb_dns_name

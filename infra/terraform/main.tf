@@ -184,9 +184,8 @@ module "waf" {
 }
 
 # ─── CloudFront ──────────────────────────────────────────────────────────────
-# NOTE: CloudFront needs a reachable public origin. The cluster does not
-# currently provision the ALB ingress controller, so use the catalog service
-# load balancer as the public origin for now.
+# NOTE: CloudFront origin points to the dedicated frontend service
+# load balancer in EKS.
 
 module "cloudfront" {
   source = "./modules/cloudfront"
@@ -194,7 +193,7 @@ module "cloudfront" {
   environment  = terraform.workspace
   project      = var.project
   owner        = var.owner
-  alb_dns_name = "a98f519c4af93425b99b2dc81d16f3e9-1395133919.us-east-1.elb.amazonaws.com"
+  alb_dns_name = "a0879b37672fa4da29fd26acaf2a6fb4-1508186753.us-east-1.elb.amazonaws.com"
   waf_acl_arn  = module.waf.web_acl_arn
 }
 
