@@ -11,6 +11,7 @@ resource "aws_cloudfront_distribution" "this" {
   is_ipv6_enabled = true
   price_class     = "PriceClass_100"
   web_acl_id      = var.waf_acl_arn
+  default_root_object = "health"
 
   origin {
     domain_name = var.alb_dns_name
@@ -19,7 +20,7 @@ resource "aws_cloudfront_distribution" "this" {
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "https-only"
+      origin_protocol_policy = "http-only"
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }

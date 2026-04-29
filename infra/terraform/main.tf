@@ -184,9 +184,9 @@ module "waf" {
 }
 
 # ─── CloudFront ──────────────────────────────────────────────────────────────
-# NOTE: alb_dns_name is the DNS name of the Public ALB provisioned by the
-# EKS AWS Load Balancer Controller after the cluster is running.
-# On first apply, set this to a placeholder; update after the ALB is created.
+# NOTE: CloudFront needs a reachable public origin. The cluster does not
+# currently provision the ALB ingress controller, so use the catalog service
+# load balancer as the public origin for now.
 
 module "cloudfront" {
   source = "./modules/cloudfront"
@@ -194,7 +194,7 @@ module "cloudfront" {
   environment  = terraform.workspace
   project      = var.project
   owner        = var.owner
-  alb_dns_name = "placeholder-alb.us-east-1.elb.amazonaws.com"
+  alb_dns_name = "a98f519c4af93425b99b2dc81d16f3e9-1395133919.us-east-1.elb.amazonaws.com"
   waf_acl_arn  = module.waf.web_acl_arn
 }
 
