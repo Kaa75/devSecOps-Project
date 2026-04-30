@@ -107,6 +107,21 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name shopcloud-default --region us-east-1
 
+      - name: Sync Cognito client IDs into shopcloud-secrets
+        run: |
+          CUSTOMER_POOL_ID=$(kubectl get secret shopcloud-secrets -n shopcloud \
+            -o jsonpath='{.data.COGNITO_CUSTOMER_POOL_ID}' | base64 -d)
+          ADMIN_POOL_ID=$(kubectl get secret shopcloud-secrets -n shopcloud \
+            -o jsonpath='{.data.COGNITO_ADMIN_POOL_ID}' | base64 -d)
+          CUSTOMER_CLIENT_ID=$(aws cognito-idp list-user-pool-clients \
+            --user-pool-id "$CUSTOMER_POOL_ID" \
+            --query 'UserPoolClients[0].ClientId' --output text)
+          ADMIN_CLIENT_ID=$(aws cognito-idp list-user-pool-clients \
+            --user-pool-id "$ADMIN_POOL_ID" \
+            --query 'UserPoolClients[0].ClientId' --output text)
+          kubectl patch secret shopcloud-secrets -n shopcloud \
+            -p "{\"stringData\":{\"COGNITO_CUSTOMER_CLIENT_ID\":\"$CUSTOMER_CLIENT_ID\",\"COGNITO_ADMIN_CLIENT_ID\":\"$ADMIN_CLIENT_ID\"}}"
+
       - name: Apply manifest changes
         run: |
           kubectl apply -n shopcloud \
