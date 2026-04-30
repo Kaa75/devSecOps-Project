@@ -37,13 +37,15 @@ router.get('/admin/orders', async (req, res) => {
   try {
     const result = await breaker.fire(
       `SELECT o.id, o.customer_email, o.status, o.total_amount, o.created_at,
-              json_agg(json_build_object(
+              COALESCE(json_agg(json_build_object(
                 'product_id', oi.product_id,
+                'product_name', p.name,
                 'quantity', oi.quantity,
                 'unit_price', oi.unit_price
-              ) ORDER BY oi.id) AS items
+              ) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
        FROM orders o
        LEFT JOIN order_items oi ON oi.order_id = o.id
+       LEFT JOIN products p ON p.id = oi.product_id
        GROUP BY o.id
        ORDER BY o.created_at DESC
        LIMIT 200`,

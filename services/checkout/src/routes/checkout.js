@@ -150,6 +150,42 @@ router.post('/checkout', requireCustomerAuth, async (req, res) => {
 });
 
 /**
+ * GET /orders
+ * List all orders for the authenticated customer
+ */
+router.get('/orders', requireCustomerAuth, async (req, res) => {
+  const customerId = req.user.sub;
+  try {
+    const result = await pool.query(
+      `SELECT o.id, o.status, o.total_amount, o.created_at,
+              COALESCE(json_agg(json_build_object(
+                'productId', oi.product_id,
+                'productName', p.name,
+                'quantity', oi.quantity,
+                'unitPrice', oi.unit_price
+              ) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
+       FROM orders o
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       LEFT JOIN products p ON p.id = oi.product_id
+       WHERE o.customer_id = $1
+       GROUP BY o.id
+       ORDER BY o.created_at DESC`,
+      [customerId]
+    );
+    return res.json(result.rows.map(o => ({
+      orderId: o.id,
+      status: o.status,
+      totalAmount: parseFloat(o.total_amount),
+      createdAt: o.created_at,
+      items: o.items,
+    })));
+  } catch (err) {
+    console.error('List orders error:', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /orders/:id
  * Retrieve order status (requires Customer JWT)
  */

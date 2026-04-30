@@ -67,6 +67,8 @@ export default function AdminPage({ auth, onLogout }) {
 
   useEffect(() => { if (tab === 'products') loadProducts(); }, [tab, loadProducts]);
   useEffect(() => { if (tab === 'orders') loadOrders(); }, [tab, loadOrders]);
+  // Pre-load products for the Returns tab product picker
+  useEffect(() => { if (tab === 'returns' && products.length === 0) loadProducts(); }, [tab, products.length, loadProducts]);
 
   // ── Product form ──────────────────────────────────────────────
   const openAdd = () => { setEditingId(null); setForm(EMPTY_FORM); setFormError(''); setShowForm(true); };
@@ -264,7 +266,7 @@ export default function AdminPage({ auth, onLogout }) {
                 <p style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.75rem' }}>Copy a product ID from the Products tab:</p>
                 <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
                   {products.length === 0
-                    ? <p style={{ padding: '1rem', color: '#9ca3af', fontSize: '0.85rem' }}>Load products first (visit the Products tab).</p>
+                    ? <p style={{ padding: '1rem', color: '#9ca3af', fontSize: '0.85rem' }}>Loading products…</p>
                     : products.filter(p => p.is_active).map(p => (
                       <div
                         key={p.id}
@@ -303,7 +305,7 @@ export default function AdminPage({ auth, onLogout }) {
                         <div className="order-items">
                           {(o.items || []).map((i, idx) => (
                             <span key={idx} className="order-item">
-                              {i.quantity}× {fmt(i.unit_price)}
+                              {i.product_name || 'Product'} × {i.quantity} @ {fmt(i.unit_price)}
                             </span>
                           ))}
                         </div>
