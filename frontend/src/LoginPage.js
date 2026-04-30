@@ -274,7 +274,7 @@ export default function LoginPage({ onAuth }) {
               {tab === 'login'
                 ? <>No account? <button className="link-btn" type="button" onClick={() => switchTab('register')}>Register</button>
                    {' · '}
-                   <button className="link-btn" type="button" onClick={() => { savePendingEmail(email); setTab('verify'); reset(); }}>Verify email</button></>
+                   <button className="link-btn" type="button" onClick={() => { savePendingEmail(''); setTab('verify'); reset(); }}>Verify email</button></>
                 : tab === 'register'
                 ? <>Have an account? <button className="link-btn" type="button" onClick={() => switchTab('login')}>Sign in</button></>
                 : <>Back to <button className="link-btn" type="button" onClick={() => switchTab('login')}>customer login</button></>}
