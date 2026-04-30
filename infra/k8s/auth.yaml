@@ -22,8 +22,6 @@ spec:
         app: auth
     spec:
       serviceAccountName: auth
-      securityContext:
-        runAsNonRoot: true
       containers:
         - name: auth
           image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/auth:latest
@@ -40,11 +38,16 @@ spec:
                 secretKeyRef:
                   name: shopcloud-secrets
                   key: COGNITO_ADMIN_POOL_ID
-            - name: COGNITO_CLIENT_ID
+            - name: COGNITO_CUSTOMER_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   name: shopcloud-secrets
-                  key: COGNITO_CLIENT_ID
+                  key: COGNITO_CUSTOMER_CLIENT_ID
+            - name: COGNITO_ADMIN_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: shopcloud-secrets
+                  key: COGNITO_ADMIN_CLIENT_ID
             - name: AWS_XRAY_DAEMON_ADDRESS
               value: "xray-daemon:2000"
           livenessProbe:
@@ -69,6 +72,25 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+        - name: xray-daemon
+          image: amazon/aws-xray-daemon:latest
+          ports:
+            - containerPort: 2000
+              protocol: UDP
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+          securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
