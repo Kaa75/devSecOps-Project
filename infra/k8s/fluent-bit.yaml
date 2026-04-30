@@ -1,16 +1,11 @@
 ---
 apiVersion: v1
-kind: Namespace
-metadata:
-  name: kube-system
----
-apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: fluent-bit
   namespace: kube-system
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::${AWS_ACCOUNT_ID}:role/${CLUSTER_NAME}-irsa-fluent-bit
+    eks.amazonaws.com/role-arn: arn:aws:iam::379604374648:role/shopcloud-default-irsa-fluent-bit
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -49,8 +44,8 @@ data:
     [OUTPUT]
         Name                cloudwatch_logs
         Match               *
-        region              ${AWS_REGION}
-        log_group_name      /aws/eks/${CLUSTER_NAME}/containers
+        region              us-east-1
+        log_group_name      /aws/eks/shopcloud-default/containers
         log_stream_prefix   from-fluent-bit-
         auto_create_group   true
 
@@ -87,9 +82,9 @@ spec:
         - name: AWS_REGION
           value: us-east-1
         - name: CLUSTER_NAME
-          value: shopcloud-production
+          value: shopcloud-default
         - name: AWS_ACCOUNT_ID
-          value: "123456789012"
+          value: "379604374648"
         volumeMounts:
         - name: varlog
           mountPath: /var/log

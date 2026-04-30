@@ -21,7 +21,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: auth
-          image: <AWS_ACCOUNT_ID>.dkr.ecr.eu-west-1.amazonaws.com/shopcloud/production/auth:latest
+          image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/auth:latest
           ports:
             - containerPort: 3000
           env:
@@ -76,7 +76,7 @@ metadata:
   name: auth
   namespace: shopcloud
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: auth
   ports:

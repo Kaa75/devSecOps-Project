@@ -21,7 +21,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: catalog
-          image: <AWS_ACCOUNT_ID>.dkr.ecr.eu-west-1.amazonaws.com/shopcloud/production/catalog:latest
+          image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/catalog:latest
           ports:
             - containerPort: 3000
           env:
@@ -91,7 +91,7 @@ metadata:
   name: catalog
   namespace: shopcloud
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: catalog
   ports:

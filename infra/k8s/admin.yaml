@@ -21,7 +21,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: admin
-          image: <AWS_ACCOUNT_ID>.dkr.ecr.eu-west-1.amazonaws.com/shopcloud/production/admin:latest
+          image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/admin:latest
           ports:
             - containerPort: 3000
           env:
@@ -69,7 +69,7 @@ metadata:
   name: admin
   namespace: shopcloud
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: admin
   ports:
