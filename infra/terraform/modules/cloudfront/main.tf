@@ -34,10 +34,7 @@ resource "aws_cloudfront_distribution" "this" {
     forwarded_values {
       query_string = true
 
-      # Content-Type must be forwarded so Express body-parser can decode
-      # the JSON body on POST /api/auth/* and /api/checkout/* requests.
-      # Origin and Accept are needed for CORS pre-flight responses.
-      headers = ["Host", "Authorization", "Content-Type", "Origin", "Accept"]
+      headers = ["Host", "Authorization"]
 
       cookies {
         forward = "none"
