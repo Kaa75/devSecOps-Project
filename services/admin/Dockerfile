@@ -7,6 +7,7 @@ RUN npm install --omit=dev
 # Stage 2: runtime image
 FROM node:20-alpine AS runtime
 WORKDIR /app
+RUN npm install -g npm@latest
 
 # Copy deps from previous stage
 COPY --from=deps /app/node_modules ./node_modules

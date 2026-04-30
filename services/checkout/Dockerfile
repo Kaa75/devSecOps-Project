@@ -8,6 +8,7 @@ RUN npm install --omit=dev
 # ── Stage 2: Runtime image ─────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
 WORKDIR /app
+RUN npm install -g npm@latest
 
 # Copy only production node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
