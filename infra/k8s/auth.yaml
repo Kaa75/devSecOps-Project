@@ -23,7 +23,7 @@ spec:
         - name: auth
           image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/auth:latest
           ports:
-            - containerPort: 3000
+            - containerPort: 3003
           env:
             - name: COGNITO_CUSTOMER_POOL_ID
               valueFrom:
@@ -45,13 +45,13 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 3000
+              port: 3003
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /ready
-              port: 3000
+              path: /health
+              port: 3003
             initialDelaySeconds: 10
             periodSeconds: 5
           resources:
@@ -63,6 +63,7 @@ spec:
               cpu: "250m"
           securityContext:
             runAsNonRoot: true
+            runAsUser: 1000
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
@@ -81,4 +82,4 @@ spec:
     app: auth
   ports:
     - port: 80
-      targetPort: 3000
+      targetPort: 3003

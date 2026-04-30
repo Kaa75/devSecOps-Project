@@ -45,7 +45,7 @@ spec:
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /health
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -58,6 +58,7 @@ spec:
               cpu: "250m"
           securityContext:
             runAsNonRoot: true
+            runAsUser: 1000
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:

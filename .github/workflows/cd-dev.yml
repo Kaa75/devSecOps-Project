@@ -107,8 +107,19 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name shopcloud-default --region us-east-1
 
-      - name: Apply manifest changes (services, configmaps, etc.)
-        run: kubectl apply -f infra/k8s/ -n shopcloud
+      - name: Apply manifest changes
+        run: |
+          kubectl apply -n shopcloud \
+            -f infra/k8s/namespace.yaml \
+            -f infra/k8s/catalog.yaml \
+            -f infra/k8s/cart.yaml \
+            -f infra/k8s/checkout.yaml \
+            -f infra/k8s/auth.yaml \
+            -f infra/k8s/admin.yaml \
+            -f infra/k8s/frontend.yaml \
+            -f infra/k8s/hpa.yaml \
+            -f infra/k8s/network-policies.yaml
+          kubectl apply -f infra/k8s/fluent-bit.yaml
 
       - name: Update catalog image
         run: kubectl set image deployment/catalog catalog=$ECR_REGISTRY/shopcloud/default/catalog:$IMAGE_TAG -n shopcloud
@@ -143,16 +154,16 @@ jobs:
     needs: deploy
     steps:
       - name: Health check — catalog
-        run: curl --fail --retry 5 --retry-delay 10 http://a98f519c4af93425b99b2dc81d16f3e9-1395133919.us-east-1.elb.amazonaws.com/health
+        run: curl --fail --retry 5 --retry-delay 10 http://a98f519c4af93425b99b2dc81d16f3e9-2102793419.us-east-1.elb.amazonaws.com/health
 
       - name: Health check — cart
-        run: curl --fail --retry 5 --retry-delay 10 http://ada019bcb0d9c444ea2a19d3deb7742f-1636233805.us-east-1.elb.amazonaws.com/health
+        run: curl --fail --retry 5 --retry-delay 10 http://ada019bcb0d9c444ea2a19d3deb7742f-1088426612.us-east-1.elb.amazonaws.com/health
 
       - name: Health check — checkout
-        run: curl --fail --retry 5 --retry-delay 10 http://a185d62bc3d6f405085e9a71e05d3a57-285844831.us-east-1.elb.amazonaws.com/health
+        run: curl --fail --retry 5 --retry-delay 10 http://a185d62bc3d6f405085e9a71e05d3a57-9741275.us-east-1.elb.amazonaws.com/health
 
       - name: Health check — auth
-        run: curl --fail --retry 5 --retry-delay 10 http://ae47051d5b5e74c65b6fca095b2dfbcb-2074452419.us-east-1.elb.amazonaws.com/health
+        run: curl --fail --retry 5 --retry-delay 10 http://ae47051d5b5e74c65b6fca095b2dfbcb-1596725155.us-east-1.elb.amazonaws.com/health
 
       - name: Health check — frontend
         run: curl --fail --retry 5 --retry-delay 10 http://a0879b37672fa4da29fd26acaf2a6fb4-1508186753.us-east-1.elb.amazonaws.com/

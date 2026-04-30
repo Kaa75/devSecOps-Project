@@ -23,7 +23,7 @@ spec:
         - name: admin
           image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/admin:latest
           ports:
-            - containerPort: 3000
+            - containerPort: 3004
           env:
             - name: DATABASE_URL
               valueFrom:
@@ -38,13 +38,13 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 3000
+              port: 3004
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /ready
-              port: 3000
+              path: /health
+              port: 3004
             initialDelaySeconds: 10
             periodSeconds: 5
           resources:
@@ -56,6 +56,7 @@ spec:
               cpu: "250m"
           securityContext:
             runAsNonRoot: true
+            runAsUser: 1000
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
@@ -74,4 +75,4 @@ spec:
     app: admin
   ports:
     - port: 80
-      targetPort: 3000
+      targetPort: 3004
