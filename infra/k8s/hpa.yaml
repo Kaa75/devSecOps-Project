@@ -8,7 +8,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: catalog
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 10
   metrics:
     - type: Resource
@@ -34,7 +34,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: cart
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 10
   metrics:
     - type: Resource
@@ -60,7 +60,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: checkout
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 10
   metrics:
     - type: Resource
@@ -86,7 +86,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: auth
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 10
   metrics:
     - type: Resource
@@ -112,7 +112,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: admin
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 10
   metrics:
     - type: Resource
