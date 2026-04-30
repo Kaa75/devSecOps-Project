@@ -37,12 +37,30 @@ export default function LoginPage({ onAuth }) {
     return res.json();
   };
 
+  // Map raw API / Cognito error messages to user-friendly copy
+  const friendly = (raw = '', isReg = false) => {
+    const s = raw.toLowerCase();
+    if (s.includes('email already registered') || s.includes('already exists') || s.includes('usernameexists'))
+      return 'An account with this email already exists. Try signing in instead.';
+    if (s.includes('password') && (s.includes('requirement') || s.includes('policy') || s.includes('invalid')))
+      return 'Password must be at least 8 characters and include an uppercase letter, a number, and a symbol.';
+    if (s.includes('incorrect') || s.includes('invalid credentials') || s.includes('notauthorized') || s.includes('usernotfound'))
+      return 'Incorrect email or password.';
+    if (s.includes('not confirmed') || s.includes('usernotconfirmed'))
+      return 'Please check your email and verify your account before signing in.';
+    if (s.includes('limit') || s.includes('attempts') || s.includes('toomanyrequests'))
+      return 'Too many attempts. Please wait a moment and try again.';
+    if (s.includes('expired'))
+      return 'Your session has expired. Please sign in again.';
+    return isReg ? 'Could not create account. Please try again.' : 'Sign in failed. Please try again.';
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     reset();
     if (tab === 'register') {
       if (password !== confirm) { setError('Passwords do not match.'); return; }
-      if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+      if (password.length < 8) { setError('Use at least 8 characters for your password.'); return; }
     }
     setLoading(true);
     try {
@@ -61,7 +79,7 @@ export default function LoginPage({ onAuth }) {
       if (err.name === 'TimeoutError' || err.name === 'TypeError') {
         persist({ token: 'demo', email: email || 'demo@shopcloud.dev', isAdmin: false, demo: true });
       } else {
-        setError(err.message || 'Something went wrong. Please try again.');
+        setError(friendly(err.message, tab === 'register'));
       }
     } finally {
       setLoading(false);
