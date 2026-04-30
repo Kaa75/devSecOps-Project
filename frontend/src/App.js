@@ -1,439 +1,383 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import axios from 'axios';
 import './App.css';
 import LoginPage, { AUTH_STORAGE_KEY } from './LoginPage';
 
+// All API calls go through nginx reverse proxy → internal cluster DNS
+const CATALOG_API = '/api/catalog';
+const CART_API    = '/api/cart';
+const CHECKOUT_API = '/api/checkout';
+
 const DEMO_PRODUCTS = [
-  { id: 1, name: 'Laptop Pro', price: 1299.99, category: 'Electronics', description: 'High-performance laptop for professionals' },
-  { id: 2, name: 'Wireless Mouse', price: 49.99, category: 'Accessories', description: 'Ergonomic design, 12-month battery life' },
-  { id: 3, name: 'Mechanical Keyboard', price: 149.99, category: 'Accessories', description: 'RGB backlit, tactile switches' },
-  { id: 4, name: 'USB-C Hub', price: 79.99, category: 'Accessories', description: '7-in-1 hub with 4K HDMI and PD charging' },
-  { id: 5, name: 'Monitor 4K', price: 599.99, category: 'Electronics', description: '27-inch IPS display, 144Hz refresh rate' },
-  { id: 6, name: 'Webcam HD', price: 89.99, category: 'Electronics', description: '1080p 60fps with built-in noise cancellation' },
+  { id: 1, name: 'Laptop Pro 15', price: 1299.99, category: 'Electronics', description: 'High-performance laptop, M-series chip, 18 h battery.' },
+  { id: 2, name: 'Wireless Mouse', price: 49.99, category: 'Peripherals', description: 'Ergonomic 3-button design, 12-month battery, silent clicks.' },
+  { id: 3, name: 'Mechanical Keyboard', price: 149.99, category: 'Peripherals', description: 'RGB backlit, tactile brown switches, full-size layout.' },
+  { id: 4, name: 'USB-C Hub 7-in-1', price: 79.99, category: 'Accessories', description: '4K HDMI, 100W PD, SD card, 3× USB-A, ethernet.' },
+  { id: 5, name: 'Monitor 27" 4K', price: 599.99, category: 'Electronics', description: 'IPS panel, 144 Hz, USB-C alt-mode, factory calibrated.' },
+  { id: 6, name: 'Webcam 1080p60', price: 89.99, category: 'Electronics', description: 'Auto-focus, dual noise-cancelling mics, plug-and-play.' },
+  { id: 7, name: 'Desk Lamp LED', price: 39.99, category: 'Accessories', description: 'Touch dimmer, 5 colour temps, USB-A charging port.' },
+  { id: 8, name: 'Laptop Stand', price: 34.99, category: 'Accessories', description: 'Aluminium, 6 height positions, foldable for travel.' },
 ];
 
-const CATALOG_API = 'http://a98f519c4af93425b99b2dc81d16f3e9-1395133919.us-east-1.elb.amazonaws.com';
-const CART_API = 'http://ada019bcb0d9c444ea2a19d3deb7742f-1636233805.us-east-1.elb.amazonaws.com';
-const CHECKOUT_API = 'http://a185d62bc3d6f405085e9a71e05d3a57-285844831.us-east-1.elb.amazonaws.com';
-const CART_STORAGE_KEY = 'shopcloud-cart-v2';
-
-function normalizeProducts(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (payload && Array.isArray(payload.products)) return payload.products;
-  return [];
-}
-
-function toCurrency(value) {
-  return `$${Number(value).toFixed(2)}`;
-}
+function fmt(n) { return `$${Number(n).toFixed(2)}`; }
 
 function getInitialAuth() {
-  try {
-    const saved = localStorage.getItem(AUTH_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)); } catch { return null; }
 }
 
-function App() {
-  const [auth, setAuth] = useState(getInitialAuth);
-
-  const [products, setProducts] = useState(DEMO_PRODUCTS);
-  const [cart, setCart] = useState(() => {
-    try {
-      const saved = localStorage.getItem(CART_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+function apiFetch(url, options = {}, token) {
+  return fetch(url, {
+    ...options,
+    signal: AbortSignal.timeout(3000),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token && token !== 'demo' ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
   });
-  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
-  const [usingDemoData, setUsingDemoData] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('featured');
-  const [toast, setToast] = useState(null);
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [lastOrderId, setLastOrderId] = useState('');
+}
 
-  const handleAuth = (authData) => {
-    setAuth(authData);
-  };
+export default function App() {
+  const [auth, setAuth]                 = useState(getInitialAuth);
+  const [page, setPage]                 = useState('shop'); // 'shop' | 'orders'
+  const [products, setProducts]         = useState(DEMO_PRODUCTS);
+  const [liveData, setLiveData]         = useState(false);
+  const [loadingProds, setLoadingProds] = useState(true);
+  const [cartOpen, setCartOpen]         = useState(false);
+  const [cart, setCart]                 = useState(() => {
+    try { return JSON.parse(localStorage.getItem('shopcloud-cart')) || []; } catch { return []; }
+  });
+  const [search, setSearch]             = useState('');
+  const [category, setCategory]         = useState('all');
+  const [sort, setSort]                 = useState('featured');
+  const [toast, setToast]               = useState(null);
+  const [checkout, setCheckout]         = useState(false);
+  const [placing, setPlacing]           = useState(false);
+  const [orders, setOrders]             = useState([]);
 
+  // ── Auth ──────────────────────────────────────────────────────
+  const handleAuth = (d) => setAuth(d);
   const handleLogout = () => {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setAuth(null);
     setCart([]);
   };
 
+  // ── Products ──────────────────────────────────────────────────
   useEffect(() => {
-    if (auth) fetchProductsFromBackend();
+    if (!auth) return;
+    setLoadingProds(true);
+    apiFetch(`${CATALOG_API}/products?limit=24`, {}, auth.token)
+      .then(r => r.json())
+      .then(data => {
+        const items = Array.isArray(data) ? data : data.products ?? [];
+        if (items.length) { setProducts(items); setLiveData(true); }
+        else { setProducts(DEMO_PRODUCTS); setLiveData(false); }
+      })
+      .catch(() => { setProducts(DEMO_PRODUCTS); setLiveData(false); })
+      .finally(() => setLoadingProds(false));
   }, [auth]);
 
+  // ── Cart persistence ──────────────────────────────────────────
   useEffect(() => {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    localStorage.setItem('shopcloud-cart', JSON.stringify(cart));
   }, [cart]);
 
+  // ── Toast auto-dismiss ────────────────────────────────────────
   useEffect(() => {
-    if (!toast) return undefined;
-    const timer = setTimeout(() => setToast(null), 2200);
-    return () => clearTimeout(timer);
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(t);
   }, [toast]);
 
-  const authHeaders = () => {
-    if (auth?.token && auth.token !== 'demo') {
-      return { Authorization: `Bearer ${auth.token}` };
-    }
-    return {};
+  const notify = (msg, type = 'ok') => setToast({ msg, type });
+
+  // ── Cart actions ──────────────────────────────────────────────
+  const addToCart = (product) => {
+    setCart(c => {
+      const ex = c.find(i => i.id === product.id);
+      return ex
+        ? c.map(i => i.id === product.id ? { ...i, qty: i.qty + 1 } : i)
+        : [...c, { ...product, qty: 1 }];
+    });
+    setCartOpen(true);
+    notify(`${product.name} added to cart`);
+    apiFetch(`${CART_API}/cart/add-item`, { method: 'POST', body: JSON.stringify({ productId: product.id, quantity: 1 }) }, auth?.token).catch(() => {});
   };
 
-  const fetchProductsFromBackend = async () => {
-    setIsLoadingProducts(true);
-    try {
-      const response = await axios.get(`${CATALOG_API}/products?limit=24`, {
-        timeout: 2000,
-        headers: authHeaders(),
-      });
-      const normalized = normalizeProducts(response.data);
-      if (normalized.length > 0) {
-        setProducts(normalized);
-        setUsingDemoData(false);
-      } else {
-        setProducts(DEMO_PRODUCTS);
-        setUsingDemoData(true);
-      }
-    } catch {
-      setProducts(DEMO_PRODUCTS);
-      setUsingDemoData(true);
-    } finally {
-      setIsLoadingProducts(false);
-    }
-  };
+  const setQty = (id, delta) => setCart(c =>
+    c.map(i => i.id === id ? { ...i, qty: i.qty + delta } : i).filter(i => i.qty > 0)
+  );
+  const removeItem = (id) => setCart(c => c.filter(i => i.id !== id));
+  const clearCart  = () => setCart([]);
+
+  // ── Derived values ────────────────────────────────────────────
+  const cartCount = useMemo(() => cart.reduce((n, i) => n + i.qty, 0), [cart]);
+  const subtotal  = useMemo(() => cart.reduce((n, i) => n + Number(i.price) * i.qty, 0), [cart]);
+  const tax       = subtotal * 0.08;
+  const total     = subtotal + tax;
 
   const categories = useMemo(() => {
-    const values = products
-      .map((p) => p.category)
-      .filter((v) => typeof v === 'string' && v.trim() !== '');
-    return ['all', ...Array.from(new Set(values))];
+    const set = new Set(products.map(p => p.category).filter(Boolean));
+    return ['all', ...set];
   }, [products]);
 
-  const visibleProducts = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    let output = products.filter((product) => {
-      const byCategory = categoryFilter === 'all' || product.category === categoryFilter;
-      if (!byCategory) return false;
-      if (!query) return true;
-      const name = String(product.name || '').toLowerCase();
-      const description = String(product.description || '').toLowerCase();
-      return name.includes(query) || description.includes(query);
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let out = products.filter(p => {
+      if (category !== 'all' && p.category !== category) return false;
+      if (!q) return true;
+      return (p.name + p.description).toLowerCase().includes(q);
     });
+    if (sort === 'price-asc')  out = [...out].sort((a, b) => a.price - b.price);
+    if (sort === 'price-desc') out = [...out].sort((a, b) => b.price - a.price);
+    if (sort === 'name')       out = [...out].sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  }, [products, search, category, sort]);
 
-    switch (sortBy) {
-      case 'price-low':
-        output = [...output].sort((a, b) => Number(a.price) - Number(b.price));
-        break;
-      case 'price-high':
-        output = [...output].sort((a, b) => Number(b.price) - Number(a.price));
-        break;
-      case 'name':
-        output = [...output].sort((a, b) => String(a.name).localeCompare(String(b.name)));
-        break;
-      default:
-        break;
-    }
-    return output;
-  }, [products, searchQuery, categoryFilter, sortBy]);
-
-  const cartItemsCount = useMemo(
-    () => cart.reduce((count, item) => count + item.quantity, 0),
-    [cart]
-  );
-  const subtotal = useMemo(
-    () => cart.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0),
-    [cart]
-  );
-  const tax = subtotal * 0.08;
-  const total = subtotal + tax;
-
-  const pushToast = (message, tone = 'ok') => setToast({ message, tone });
-
-  const addToCart = async (product) => {
-    setCart((current) => {
-      const existing = current.find((item) => item.id === product.id);
-      if (existing) {
-        return current.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
-      }
-      return [...current, { ...product, quantity: 1 }];
-    });
-    pushToast(`${product.name} added to cart`);
-
-    try {
-      await axios.post(
-        `${CART_API}/cart/add-item`,
-        { productId: product.id, quantity: 1 },
-        { timeout: 2000, headers: authHeaders() }
-      );
-    } catch {
-      // Local cart remains the source of truth.
-    }
-  };
-
-  const updateQuantity = (productId, delta) => {
-    setCart((current) =>
-      current
-        .map((item) =>
-          item.id === productId ? { ...item, quantity: item.quantity + delta } : item
-        )
-        .filter((item) => item.quantity > 0)
-    );
-  };
-
-  const removeFromCart = (productId) => {
-    setCart((current) => current.filter((item) => item.id !== productId));
-  };
-
-  const clearCart = () => setCart([]);
-
-  const openCheckout = () => {
-    if (cart.length === 0) {
-      pushToast('Your cart is empty', 'warn');
-      return;
-    }
-    setShowCheckout(true);
-  };
-
+  // ── Checkout ──────────────────────────────────────────────────
   const placeOrder = async () => {
-    setIsCheckingOut(true);
+    setPlacing(true);
     try {
-      const orderData = {
-        items: cart,
-        subtotal,
-        tax,
-        total,
-        timestamp: new Date().toISOString(),
-        status: 'pending',
-      };
-      try {
-        await axios.post(`${CHECKOUT_API}/checkout`, orderData, {
-          timeout: 3000,
-          headers: authHeaders(),
-        });
-      } catch {
-        // Fallback: order recorded locally.
-      }
-      const orderId = Math.random().toString(36).slice(2, 11).toUpperCase();
-      setLastOrderId(orderId);
-      setCart([]);
-      setShowCheckout(false);
-      pushToast(`Order #${orderId} placed successfully`);
-    } catch {
-      pushToast('Failed to place order. Try again.', 'warn');
+      await apiFetch(`${CHECKOUT_API}/checkout`, {
+        method: 'POST',
+        body: JSON.stringify({ items: cart, subtotal, tax, total, timestamp: new Date().toISOString() }),
+      }, auth?.token).catch(() => {});
+      const id = `ORD-${Math.random().toString(36).slice(2, 9).toUpperCase()}`;
+      setOrders(o => [{ id, items: [...cart], total, date: new Date().toLocaleString() }, ...o]);
+      clearCart();
+      setCheckout(false);
+      setCartOpen(false);
+      notify(`Order ${id} placed!`);
     } finally {
-      setIsCheckingOut(false);
+      setPlacing(false);
     }
   };
 
-  if (!auth) {
-    return <LoginPage onAuth={handleAuth} />;
-  }
+  // ── Render ────────────────────────────────────────────────────
+  if (!auth) return <LoginPage onAuth={handleAuth} />;
 
   return (
-    <div className="App">
-      <div className="gradient-orb orb-a" />
-      <div className="gradient-orb orb-b" />
-
-      <header className="topbar">
-        <div className="container topbar-inner">
-          <div>
-            <p className="eyebrow">ShopCloud</p>
-            <h1>Modern Commerce Console</h1>
-            <p className="subhead">
-              Faster browsing, cleaner checkout, and practical controls for real shopping behavior.
-            </p>
+    <div className="shell">
+      {/* ── NAV ── */}
+      <nav className="navbar">
+        <div className="nav-inner">
+          <div className="nav-brand">
+            <svg width="28" height="28" viewBox="0 0 36 36" fill="none">
+              <rect width="36" height="36" rx="9" fill="#6366f1"/>
+              <path d="M10 13h16M10 18h10M10 23h13" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/>
+            </svg>
+            <span>ShopCloud</span>
           </div>
 
-          <div className="summary-card">
-            <div className="user-info">
-              <span className="user-email">{auth.email}</span>
-              {auth.isAdmin && <span className="admin-badge">Admin</span>}
-              {auth.demo && <span className="demo-badge">Demo</span>}
-              <button className="logout-btn ghost" onClick={handleLogout}>Sign out</button>
+          <div className="nav-links">
+            <button
+              className={`nav-link${page === 'shop' ? ' active' : ''}`}
+              onClick={() => setPage('shop')}
+            >Shop</button>
+            <button
+              className={`nav-link${page === 'orders' ? ' active' : ''}`}
+              onClick={() => setPage('orders')}
+            >Orders {orders.length > 0 && <span className="badge">{orders.length}</span>}</button>
+          </div>
+
+          <div className="nav-right">
+            <div className="nav-user">
+              <span className="nav-email">{auth.email}</span>
+              {auth.isAdmin && <span className="tag tag-admin">Admin</span>}
+              {auth.demo    && <span className="tag tag-demo">Demo</span>}
             </div>
-            <p>Items in cart</p>
-            <strong>{cartItemsCount}</strong>
-            <span>{toCurrency(subtotal)} subtotal</span>
+            <button className="btn-ghost sm" onClick={handleLogout}>Sign out</button>
+            <button className="cart-btn" onClick={() => setCartOpen(o => !o)}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+              {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
+            </button>
           </div>
         </div>
-      </header>
+      </nav>
 
-      <main className="container">
-        <section className="status-card">
-          <div className="status-row">
-            <span className="pill">Catalog: {usingDemoData ? 'Demo mode' : 'Live mode'}</span>
-            <span className="pill">Cart API: Best effort sync</span>
-            <span className="pill">Checkout: Resilient fallback</span>
-            <span className={`pill pill-auth${auth.demo ? ' pill-warn' : ' pill-ok'}`}>
-              Auth: {auth.demo ? 'Demo (service offline)' : auth.isAdmin ? 'Admin JWT' : 'Cognito JWT'}
-            </span>
-          </div>
-          {lastOrderId && (
-            <p className="order-note">Last order: #{lastOrderId}</p>
-          )}
-        </section>
+      {/* ── STATUS BAR ── */}
+      <div className="statusbar">
+        <span className={`status-pill ${liveData ? 'live' : 'demo'}`}>
+          {liveData ? '● Live catalog' : '○ Demo catalog'}
+        </span>
+        <span className={`status-pill ${auth.demo ? 'demo' : 'live'}`}>
+          {auth.demo ? '○ Auth offline (demo)' : `● ${auth.isAdmin ? 'Admin' : 'Customer'} JWT`}
+        </span>
+        <span className="status-pill live">● Cart syncing</span>
+      </div>
 
-        <section className="controls">
-          <div className="field">
-            <label htmlFor="search">Search products</label>
+      {/* ── SHOP PAGE ── */}
+      {page === 'shop' && (
+        <main className="main">
+          {/* Filters */}
+          <div className="filters">
             <input
-              id="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Try laptop, keyboard, hub..."
+              className="search-input"
+              placeholder="Search products…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
             />
-          </div>
-          <div className="field">
-            <label htmlFor="category">Category</label>
-            <select
-              id="category"
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-            >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category === 'all' ? 'All categories' : category}
-                </option>
+            <select value={category} onChange={e => setCategory(e.target.value)}>
+              {categories.map(c => (
+                <option key={c} value={c}>{c === 'all' ? 'All categories' : c}</option>
               ))}
             </select>
-          </div>
-          <div className="field">
-            <label htmlFor="sort">Sort</label>
-            <select
-              id="sort"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-            >
+            <select value={sort} onChange={e => setSort(e.target.value)}>
               <option value="featured">Featured</option>
-              <option value="price-low">Price: Low to High</option>
-              <option value="price-high">Price: High to Low</option>
-              <option value="name">Name</option>
+              <option value="price-asc">Price: Low → High</option>
+              <option value="price-desc">Price: High → Low</option>
+              <option value="name">Name A–Z</option>
             </select>
           </div>
-        </section>
 
-        <div className="layout">
-          <section className="products">
-            <div className="section-title-row">
-              <h2>Products</h2>
-              <span>{isLoadingProducts ? 'Loading…' : `${visibleProducts.length} shown`}</span>
+          {/* Products */}
+          <div className="products-header">
+            <h2>Products</h2>
+            <span>{loadingProds ? 'Loading…' : `${visible.length} products`}</span>
+          </div>
+          <div className="product-grid">
+            {visible.map(p => (
+              <div key={p.id} className="product-card">
+                <div className="product-img">
+                  <span>{p.category?.[0] ?? '📦'}</span>
+                </div>
+                <div className="product-body">
+                  {p.category && <span className="product-cat">{p.category}</span>}
+                  <h3 className="product-name">{p.name}</h3>
+                  <p className="product-desc">{p.description || 'No description.'}</p>
+                  <div className="product-footer">
+                    <span className="product-price">{fmt(p.price)}</span>
+                    <button className="btn-add" onClick={() => addToCart(p)}>Add to cart</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </main>
+      )}
+
+      {/* ── ORDERS PAGE ── */}
+      {page === 'orders' && (
+        <main className="main">
+          <div className="orders-header">
+            <h2>Your Orders</h2>
+          </div>
+          {orders.length === 0 ? (
+            <div className="empty-orders">
+              <p>No orders yet. Head to the shop to place your first order.</p>
+              <button className="btn-primary" onClick={() => setPage('shop')}>Browse products</button>
             </div>
-            <div className="grid">
-              {visibleProducts.map((product) => (
-                <article key={product.id} className="product-card">
-                  <h3>{product.name}</h3>
-                  <p className="price">{toCurrency(product.price)}</p>
-                  <p className="desc">{product.description || 'No description available.'}</p>
-                  {product.category && (
-                    <span className="product-category">{product.category}</span>
-                  )}
-                  <button onClick={() => addToCart(product)}>Add to cart</button>
-                </article>
+          ) : (
+            <div className="orders-list">
+              {orders.map(o => (
+                <div key={o.id} className="order-card">
+                  <div className="order-head">
+                    <span className="order-id">{o.id}</span>
+                    <span className="order-date">{o.date}</span>
+                    <span className="order-total">{fmt(o.total)}</span>
+                  </div>
+                  <div className="order-items">
+                    {o.items.map(i => (
+                      <span key={i.id} className="order-item">{i.name} × {i.qty}</span>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
-          </section>
+          )}
+        </main>
+      )}
 
-          <aside className="cart-panel">
-            <div className="section-title-row">
-              <h2>Cart</h2>
-              <span>{cartItemsCount} items</span>
+      {/* ── CART DRAWER ── */}
+      {cartOpen && (
+        <div className="drawer-overlay" onClick={() => setCartOpen(false)}>
+          <div className="drawer" onClick={e => e.stopPropagation()}>
+            <div className="drawer-head">
+              <h3>Cart <span className="badge">{cartCount}</span></h3>
+              <button className="btn-ghost sm" onClick={() => setCartOpen(false)}>✕</button>
             </div>
 
             {cart.length === 0 ? (
-              <p className="empty-state">Add products to start your order.</p>
+              <p className="drawer-empty">Your cart is empty.</p>
             ) : (
               <>
-                <div className="cart-items">
-                  {cart.map((item) => (
-                    <div key={item.id} className="cart-item">
-                      <div>
-                        <p className="cart-name">{item.name}</p>
-                        <p className="cart-price">{toCurrency(item.price)}</p>
+                <div className="drawer-items">
+                  {cart.map(i => (
+                    <div key={i.id} className="drawer-item">
+                      <div className="drawer-item-info">
+                        <p className="di-name">{i.name}</p>
+                        <p className="di-price">{fmt(i.price)}</p>
                       </div>
-                      <div className="qty-controls">
-                        <button onClick={() => updateQuantity(item.id, -1)}>-</button>
-                        <span>{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.id, 1)}>+</button>
+                      <div className="qty-row">
+                        <button className="qty-btn" onClick={() => setQty(i.id, -1)}>−</button>
+                        <span>{i.qty}</span>
+                        <button className="qty-btn" onClick={() => setQty(i.id, +1)}>+</button>
+                        <button className="rm-btn" onClick={() => removeItem(i.id)}>Remove</button>
                       </div>
-                      <button
-                        className="remove-btn"
-                        onClick={() => removeFromCart(item.id)}
-                        aria-label={`Remove ${item.name}`}
-                      >
-                        Remove
-                      </button>
                     </div>
                   ))}
                 </div>
 
-                <div className="cart-totals">
-                  <p><span>Subtotal</span><strong>{toCurrency(subtotal)}</strong></p>
-                  <p><span>Tax (8%)</span><strong>{toCurrency(tax)}</strong></p>
-                  <p className="grand-total"><span>Total</span><strong>{toCurrency(total)}</strong></p>
+                <div className="drawer-totals">
+                  <div className="totals-row"><span>Subtotal</span><strong>{fmt(subtotal)}</strong></div>
+                  <div className="totals-row"><span>Tax (8%)</span><strong>{fmt(tax)}</strong></div>
+                  <div className="totals-row total-line"><span>Total</span><strong>{fmt(total)}</strong></div>
                 </div>
 
-                <div className="cart-actions">
-                  <button className="ghost" onClick={clearCart}>Clear cart</button>
-                  <button className="primary" onClick={openCheckout}>Checkout</button>
+                <div className="drawer-actions">
+                  <button className="btn-ghost" onClick={clearCart}>Clear</button>
+                  <button className="btn-primary" onClick={() => { setCartOpen(false); setCheckout(true); }}>
+                    Checkout
+                  </button>
                 </div>
               </>
             )}
-          </aside>
+          </div>
         </div>
+      )}
 
-        {showCheckout && (
-          <section className="checkout-sheet">
-            <div className="checkout-head">
-              <h2>Checkout preview</h2>
-              <button className="ghost" onClick={() => setShowCheckout(false)}>Close</button>
+      {/* ── CHECKOUT MODAL ── */}
+      {checkout && (
+        <div className="modal-overlay" onClick={() => setCheckout(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Checkout</h3>
+              <button className="btn-ghost sm" onClick={() => setCheckout(false)}>✕</button>
             </div>
-            <div className="checkout-grid">
-              <div>
-                <h3>Order lines</h3>
-                {cart.map((item) => (
-                  <div key={item.id} className="review-item">
-                    <span>{item.name} × {item.quantity}</span>
-                    <span>{toCurrency(Number(item.price) * item.quantity)}</span>
+            <div className="modal-body">
+              <div className="modal-section">
+                <h4>Order summary</h4>
+                {cart.map(i => (
+                  <div key={i.id} className="modal-line">
+                    <span>{i.name} × {i.qty}</span>
+                    <span>{fmt(Number(i.price) * i.qty)}</span>
                   </div>
                 ))}
               </div>
-              <div>
-                <h3>Payment summary</h3>
-                <div className="checkout-summary">
-                  <p><span>Subtotal</span><strong>{toCurrency(subtotal)}</strong></p>
-                  <p><span>Tax (8%)</span><strong>{toCurrency(tax)}</strong></p>
-                  <p className="grand-total"><span>Total</span><strong>{toCurrency(total)}</strong></p>
-                </div>
-                <button
-                  className="primary place-order"
-                  onClick={placeOrder}
-                  disabled={isCheckingOut}
-                >
-                  {isCheckingOut ? 'Processing order…' : 'Place order'}
-                </button>
+              <div className="modal-section">
+                <h4>Payment</h4>
+                <div className="modal-line"><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
+                <div className="modal-line"><span>Tax 8%</span><span>{fmt(tax)}</span></div>
+                <div className="modal-line modal-total"><span>Total</span><strong>{fmt(total)}</strong></div>
               </div>
             </div>
-          </section>
-        )}
-      </main>
+            <div className="modal-foot">
+              <button className="btn-ghost" onClick={() => setCheckout(false)}>Cancel</button>
+              <button className="btn-primary" onClick={placeOrder} disabled={placing}>
+                {placing ? 'Placing order…' : `Pay ${fmt(total)}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* ── TOAST ── */}
       {toast && (
-        <div className={`toast ${toast.tone}`}>{toast.message}</div>
+        <div className={`toast toast-${toast.type}`}>{toast.msg}</div>
       )}
     </div>
   );
 }
-
-export default App;

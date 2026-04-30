@@ -1,212 +1,173 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 
-const AUTH_API = process.env.REACT_APP_AUTH_API || '';
-const AUTH_STORAGE_KEY = 'shopcloud-auth';
+export const AUTH_STORAGE_KEY = 'shopcloud-auth';
+const AUTH_API = '/api/auth';
 
-function LoginPage({ onAuth }) {
-  const [tab, setTab] = useState('login'); // 'login' | 'register' | 'admin'
+export default function LoginPage({ onAuth }) {
+  const [tab, setTab] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const reset = () => {
-    setError('');
-    setSuccessMsg('');
+  const reset = () => { setError(''); setSuccess(''); };
+
+  const switchTab = (t) => {
+    setTab(t); setEmail(''); setPassword(''); setConfirm(''); reset();
   };
 
-  const switchTab = (next) => {
-    setTab(next);
-    setEmail('');
-    setPassword('');
-    setConfirmPassword('');
-    reset();
+  const persist = (data) => {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data));
+    onAuth(data);
   };
 
-  const handleLogin = async (e) => {
+  const post = async (path, body) => {
+    const res = await fetch(`${AUTH_API}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json.message || `HTTP ${res.status}`);
+    }
+    return res.json();
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     reset();
-    setIsLoading(true);
+    if (tab === 'register') {
+      if (password !== confirm) { setError('Passwords do not match.'); return; }
+      if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    }
+    setLoading(true);
     try {
-      const res = await axios.post(`${AUTH_API}/auth/login`, { email, password }, { timeout: 5000 });
-      const { accessToken, idToken } = res.data;
-      const token = accessToken || idToken;
-      const authData = { token, email, isAdmin: false };
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
-      onAuth(authData);
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message;
-      if (err.code === 'ECONNABORTED' || !err.response) {
-        // Auth service unreachable — allow demo access
-        const authData = { token: 'demo', email, isAdmin: false, demo: true };
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
-        onAuth(authData);
+      if (tab === 'register') {
+        await post('/register', { email, password });
+        setSuccess('Account created! You can now sign in.');
+        switchTab('login');
       } else {
-        setError(msg || 'Login failed. Check your credentials.');
+        const endpoint = tab === 'admin' ? '/admin/login' : '/login';
+        const data = await post(endpoint, { email, password });
+        const token = data.accessToken || data.idToken || data.token;
+        persist({ token, email, isAdmin: tab === 'admin' });
+      }
+    } catch (err) {
+      // Auth service unreachable → allow demo access so UI is demonstrable
+      if (err.name === 'TimeoutError' || err.name === 'TypeError') {
+        persist({ token: 'demo', email: email || 'demo@shopcloud.dev', isAdmin: false, demo: true });
+      } else {
+        setError(err.message || 'Something went wrong. Please try again.');
       }
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
-
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    reset();
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
-    setIsLoading(true);
-    try {
-      await axios.post(`${AUTH_API}/auth/register`, { email, password }, { timeout: 5000 });
-      setSuccessMsg('Account created! You can now sign in.');
-      switchTab('login');
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message;
-      setError(msg || 'Registration failed. Try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleAdminLogin = async (e) => {
-    e.preventDefault();
-    reset();
-    setIsLoading(true);
-    try {
-      const res = await axios.post(`${AUTH_API}/auth/admin/login`, { email, password }, { timeout: 5000 });
-      const { accessToken, idToken } = res.data;
-      const token = accessToken || idToken;
-      const authData = { token, email, isAdmin: true };
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
-      onAuth(authData);
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message;
-      setError(msg || 'Admin login failed.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const onSubmit = tab === 'login' ? handleLogin : tab === 'register' ? handleRegister : handleAdminLogin;
 
   return (
-    <div className="login-page">
-      <div className="gradient-orb orb-a" />
-      <div className="gradient-orb orb-b" />
-
-      <div className="login-card">
-        <div className="login-brand">
-          <p className="eyebrow">ShopCloud</p>
-          <h1 className="login-title">Welcome back</h1>
-          <p className="login-subtitle">Sign in to browse products and manage your orders.</p>
+    <div className="auth-root">
+      {/* Left panel — branding */}
+      <div className="auth-hero">
+        <div className="auth-hero-content">
+          <div className="auth-logo">
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+              <rect width="36" height="36" rx="10" fill="#6366f1"/>
+              <path d="M10 14h16M10 18h10M10 22h13" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/>
+            </svg>
+            <span>ShopCloud</span>
+          </div>
+          <h1 className="auth-tagline">Your cloud-native<br/>commerce platform.</h1>
+          <p className="auth-sub">Built on EKS · Secured with Cognito · Delivered via CloudFront</p>
+          <div className="auth-pills">
+            <span className="auth-pill">🛡 JWT Auth</span>
+            <span className="auth-pill">⚡ Auto-scale</span>
+            <span className="auth-pill">🌍 CDN delivery</span>
+          </div>
         </div>
+      </div>
 
-        <div className="login-tabs">
-          <button
-            className={`tab-btn${tab === 'login' ? ' active' : ''}`}
-            onClick={() => switchTab('login')}
-            type="button"
-          >
-            Sign In
-          </button>
-          <button
-            className={`tab-btn${tab === 'register' ? ' active' : ''}`}
-            onClick={() => switchTab('register')}
-            type="button"
-          >
-            Create Account
-          </button>
-          <button
-            className={`tab-btn${tab === 'admin' ? ' active' : ''}`}
-            onClick={() => switchTab('admin')}
-            type="button"
-          >
-            Admin
-          </button>
-        </div>
+      {/* Right panel — form */}
+      <div className="auth-form-panel">
+        <div className="auth-card">
+          <h2 className="auth-heading">
+            {tab === 'login' ? 'Sign in to your account'
+              : tab === 'register' ? 'Create an account'
+              : 'Admin sign in'}
+          </h2>
 
-        {successMsg && <div className="login-success">{successMsg}</div>}
-        {error && <div className="login-error">{error}</div>}
-
-        <form className="login-form" onSubmit={onSubmit} noValidate>
-          <div className="login-field">
-            <label htmlFor="email">Email address</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              autoComplete="email"
-            />
+          <div className="auth-tabs">
+            {[['login','Sign In'],['register','Register'],['admin','Admin']].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={`auth-tab${tab === id ? ' active' : ''}`}
+                onClick={() => switchTab(id)}
+              >{label}</button>
+            ))}
           </div>
 
-          <div className="login-field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={tab === 'register' ? 'At least 8 characters' : '••••••••'}
-              required
-              autoComplete={tab === 'register' ? 'new-password' : 'current-password'}
-            />
-          </div>
+          {error   && <div className="auth-alert error">{error}</div>}
+          {success && <div className="auth-alert success">{success}</div>}
 
-          {tab === 'register' && (
-            <div className="login-field">
-              <label htmlFor="confirm-password">Confirm password</label>
+          <form onSubmit={handleSubmit} className="auth-fields" noValidate>
+            <label className="auth-label">
+              Email address
               <input
-                id="confirm-password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Repeat your password"
-                required
-                autoComplete="new-password"
+                type="email" value={email} autoComplete="email" required
+                placeholder="you@example.com"
+                onChange={e => setEmail(e.target.value)}
               />
-            </div>
+            </label>
+            <label className="auth-label">
+              Password
+              <input
+                type="password" value={password} required
+                placeholder={tab === 'register' ? 'At least 8 characters' : '••••••••'}
+                autoComplete={tab === 'register' ? 'new-password' : 'current-password'}
+                onChange={e => setPassword(e.target.value)}
+              />
+            </label>
+            {tab === 'register' && (
+              <label className="auth-label">
+                Confirm password
+                <input
+                  type="password" value={confirm} required
+                  placeholder="Repeat password"
+                  autoComplete="new-password"
+                  onChange={e => setConfirm(e.target.value)}
+                />
+              </label>
+            )}
+            <button
+              type="submit"
+              className="auth-submit"
+              disabled={loading || !email || !password}
+            >
+              {loading
+                ? <span className="spinner" />
+                : tab === 'login' ? 'Sign in'
+                : tab === 'register' ? 'Create account'
+                : 'Admin sign in'}
+            </button>
+          </form>
+
+          {tab === 'admin' && (
+            <p className="auth-notice">Admin access requires staff credentials and VPN.</p>
           )}
 
-          <button
-            className="login-submit primary"
-            type="submit"
-            disabled={isLoading || !email || !password}
-          >
-            {isLoading
-              ? (tab === 'register' ? 'Creating account…' : 'Signing in…')
-              : (tab === 'login' ? 'Sign in' : tab === 'register' ? 'Create account' : 'Admin sign in')}
-          </button>
-        </form>
-
-        {tab === 'admin' && (
-          <p className="login-notice">
-            Admin access is restricted to authorized staff connecting via the internal network.
+          <p className="auth-switch">
+            {tab === 'login'
+              ? <>No account? <button className="link-btn" type="button" onClick={() => switchTab('register')}>Register</button></>
+              : tab === 'register'
+              ? <>Have an account? <button className="link-btn" type="button" onClick={() => switchTab('login')}>Sign in</button></>
+              : <>Back to <button className="link-btn" type="button" onClick={() => switchTab('login')}>customer login</button></>}
           </p>
-        )}
-
-        <p className="login-footer">
-          {tab === 'login'
-            ? <>No account? <button className="link-btn" onClick={() => switchTab('register')}>Create one</button></>
-            : tab === 'register'
-            ? <>Already have an account? <button className="link-btn" onClick={() => switchTab('login')}>Sign in</button></>
-            : <>Back to <button className="link-btn" onClick={() => switchTab('login')}>customer login</button></>
-          }
-        </p>
+        </div>
       </div>
     </div>
   );
 }
-
-export { AUTH_STORAGE_KEY };
-export default LoginPage;
