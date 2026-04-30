@@ -60,6 +60,7 @@ export default function App() {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setAuth(null);
     setCart([]);
+    setOrders([]);
   };
 
   // ── Products ──────────────────────────────────────────────────

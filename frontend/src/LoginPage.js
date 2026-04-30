@@ -9,15 +9,25 @@ export default function LoginPage({ onAuth }) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [code, setCode] = useState('');
-  const [pendingEmail, setPendingEmail] = useState('');
+  const [pendingEmail, setPendingEmail] = useState(
+    () => sessionStorage.getItem('shopcloud-pending-verify') || ''
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   const reset = () => { setError(''); setSuccess(''); };
 
+  const savePendingEmail = (e) => {
+    setPendingEmail(e);
+    if (e) sessionStorage.setItem('shopcloud-pending-verify', e);
+    else sessionStorage.removeItem('shopcloud-pending-verify');
+  };
+
   const switchTab = (t) => {
-    setTab(t); setEmail(''); setPassword(''); setConfirm(''); setCode(''); reset();
+    setTab(t); setEmail(''); setPassword(''); setConfirm(''); setCode('');
+    if (t !== 'verify') savePendingEmail('');
+    reset();
   };
 
   const persist = (data) => {
@@ -68,11 +78,12 @@ export default function LoginPage({ onAuth }) {
     try {
       if (tab === 'register') {
         await post('/register', { email, password });
-        setPendingEmail(email);
+        savePendingEmail(email);
         setTab('verify');
         setSuccess('Account created! Check your email for a 6-digit verification code.');
       } else if (tab === 'verify') {
         await post('/confirm', { email: pendingEmail, code: code.trim() });
+        savePendingEmail('');
         switchTab('login');
         setSuccess('Email verified! You can now sign in.');
       } else {
@@ -85,6 +96,11 @@ export default function LoginPage({ onAuth }) {
       // Auth service unreachable → allow demo access so UI is demonstrable
       if (err.name === 'TimeoutError' || err.name === 'TypeError') {
         persist({ token: 'demo', email: email || 'demo@shopcloud.dev', isAdmin: false, demo: true });
+      } else if (tab === 'login' && (err.message || '').toLowerCase().includes('not confirmed')) {
+        // Redirect unconfirmed users to the verify tab so they can complete or retry verification
+        savePendingEmail(email);
+        setTab('verify');
+        setSuccess('Your account isn\'t verified yet. Enter the code from your email or request a new one.');
       } else {
         setError(tab === 'verify' ? (err.message || 'Invalid code, please try again.') : friendly(err.message, tab === 'register'));
       }
@@ -157,10 +173,24 @@ export default function LoginPage({ onAuth }) {
           {tab === 'verify' ? (
             <>
               <p style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '1.25rem' }}>
-                We sent a 6-digit code to <strong>{pendingEmail}</strong>.
-                Enter it below to activate your account.
+                {pendingEmail
+                  ? <>We sent a 6-digit code to <strong>{pendingEmail}</strong>. Enter it below to activate your account.</>
+                  : 'Enter your email and the verification code we sent you.'}
               </p>
               <form onSubmit={handleSubmit} className="auth-fields" noValidate>
+                {!pendingEmail && (
+                  <label className="auth-label">
+                    Email address
+                    <input
+                      type="email"
+                      value={email}
+                      autoComplete="email"
+                      required
+                      placeholder="you@example.com"
+                      onChange={e => { setEmail(e.target.value); savePendingEmail(e.target.value); }}
+                    />
+                  </label>
+                )}
                 <label className="auth-label">
                   Verification code
                   <input
@@ -177,16 +207,18 @@ export default function LoginPage({ onAuth }) {
                 <button
                   type="submit"
                   className="auth-submit"
-                  disabled={loading || code.trim().length < 6}
+                  disabled={loading || code.trim().length < 6 || (!pendingEmail && !email)}
                 >
                   {loading ? <span className="spinner" /> : 'Verify email'}
                 </button>
               </form>
               <p className="auth-switch">
                 Didn't receive it?{' '}
-                <button className="link-btn" type="button" onClick={handleResend} disabled={loading}>
+                <button className="link-btn" type="button" onClick={handleResend} disabled={loading || (!pendingEmail && !email)}>
                   Resend code
                 </button>
+                {' · '}
+                <button className="link-btn" type="button" onClick={() => switchTab('login')}>Back to sign in</button>
               </p>
             </>
           ) : (
@@ -240,7 +272,9 @@ export default function LoginPage({ onAuth }) {
           {tab !== 'verify' && (
             <p className="auth-switch">
               {tab === 'login'
-                ? <>No account? <button className="link-btn" type="button" onClick={() => switchTab('register')}>Register</button></>
+                ? <>No account? <button className="link-btn" type="button" onClick={() => switchTab('register')}>Register</button>
+                   {' · '}
+                   <button className="link-btn" type="button" onClick={() => { savePendingEmail(email); setTab('verify'); reset(); }}>Verify email</button></>
                 : tab === 'register'
                 ? <>Have an account? <button className="link-btn" type="button" onClick={() => switchTab('login')}>Sign in</button></>
                 : <>Back to <button className="link-btn" type="button" onClick={() => switchTab('login')}>customer login</button></>}
