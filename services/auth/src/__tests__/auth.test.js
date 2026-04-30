@@ -262,6 +262,83 @@ describe('POST /auth/refresh', () => {
   });
 });
 
+// ── /auth/confirm ─────────────────────────────────────────────────────────────
+
+describe('POST /auth/confirm', () => {
+  it('returns 200 on valid code', async () => {
+    mockSend.mockResolvedValueOnce({});
+    const res = await request(app)
+      .post('/auth/confirm')
+      .send({ email: 'user@example.com', code: '123456' });
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatch(/confirmed/i);
+  });
+
+  it('returns 400 when email or code missing', async () => {
+    const res = await request(app).post('/auth/confirm').send({ email: 'x@x.com' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 on CodeMismatchException', async () => {
+    const err = new Error('wrong code');
+    err.name = 'CodeMismatchException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/confirm')
+      .send({ email: 'user@example.com', code: '000000' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/invalid/i);
+  });
+
+  it('returns 400 on ExpiredCodeException', async () => {
+    const err = new Error('expired');
+    err.name = 'ExpiredCodeException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/confirm')
+      .send({ email: 'user@example.com', code: '123456' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/expired/i);
+  });
+
+  it('returns 409 when already confirmed', async () => {
+    const err = new Error('already confirmed');
+    err.name = 'NotAuthorizedException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/confirm')
+      .send({ email: 'user@example.com', code: '123456' });
+    expect(res.status).toBe(409);
+  });
+});
+
+// ── /auth/resend-code ─────────────────────────────────────────────────────────
+
+describe('POST /auth/resend-code', () => {
+  it('returns 200 on success', async () => {
+    mockSend.mockResolvedValueOnce({});
+    const res = await request(app)
+      .post('/auth/resend-code')
+      .send({ email: 'user@example.com' });
+    expect(res.status).toBe(200);
+  });
+
+  it('returns 400 when email missing', async () => {
+    const res = await request(app).post('/auth/resend-code').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 429 on LimitExceededException', async () => {
+    const err = new Error('limit');
+    err.name = 'LimitExceededException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/resend-code')
+      .send({ email: 'user@example.com' });
+    expect(res.status).toBe(429);
+  });
+});
+
 // ── Property: invalid credentials always return same message ──────────────────
 
 describe('Property 14: generic error message for invalid credentials', () => {

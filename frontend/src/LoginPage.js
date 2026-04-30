@@ -8,6 +8,8 @@ export default function LoginPage({ onAuth }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [code, setCode] = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -15,7 +17,7 @@ export default function LoginPage({ onAuth }) {
   const reset = () => { setError(''); setSuccess(''); };
 
   const switchTab = (t) => {
-    setTab(t); setEmail(''); setPassword(''); setConfirm(''); reset();
+    setTab(t); setEmail(''); setPassword(''); setConfirm(''); setCode(''); reset();
   };
 
   const persist = (data) => {
@@ -66,8 +68,13 @@ export default function LoginPage({ onAuth }) {
     try {
       if (tab === 'register') {
         await post('/register', { email, password });
-        setSuccess('Account created! You can now sign in.');
+        setPendingEmail(email);
+        setTab('verify');
+        setSuccess('Account created! Check your email for a 6-digit verification code.');
+      } else if (tab === 'verify') {
+        await post('/confirm', { email: pendingEmail, code: code.trim() });
         switchTab('login');
+        setSuccess('Email verified! You can now sign in.');
       } else {
         const endpoint = tab === 'admin' ? '/admin/login' : '/login';
         const data = await post(endpoint, { email, password });
@@ -79,8 +86,21 @@ export default function LoginPage({ onAuth }) {
       if (err.name === 'TimeoutError' || err.name === 'TypeError') {
         persist({ token: 'demo', email: email || 'demo@shopcloud.dev', isAdmin: false, demo: true });
       } else {
-        setError(friendly(err.message, tab === 'register'));
+        setError(tab === 'verify' ? (err.message || 'Invalid code, please try again.') : friendly(err.message, tab === 'register'));
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    reset();
+    setLoading(true);
+    try {
+      await post('/resend-code', { email: pendingEmail });
+      setSuccess('A new code has been sent to your email.');
+    } catch (err) {
+      setError(err.message || 'Could not resend code. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -114,76 +134,118 @@ export default function LoginPage({ onAuth }) {
           <h2 className="auth-heading">
             {tab === 'login' ? 'Sign in to your account'
               : tab === 'register' ? 'Create an account'
+              : tab === 'verify' ? 'Verify your email'
               : 'Admin sign in'}
           </h2>
 
-          <div className="auth-tabs">
-            {[['login','Sign In'],['register','Register'],['admin','Admin']].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={`auth-tab${tab === id ? ' active' : ''}`}
-                onClick={() => switchTab(id)}
-              >{label}</button>
-            ))}
-          </div>
+          {tab !== 'verify' && (
+            <div className="auth-tabs">
+              {[['login','Sign In'],['register','Register'],['admin','Admin']].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`auth-tab${tab === id ? ' active' : ''}`}
+                  onClick={() => switchTab(id)}
+                >{label}</button>
+              ))}
+            </div>
+          )}
 
           {error   && <div className="auth-alert error">{error}</div>}
           {success && <div className="auth-alert success">{success}</div>}
 
-          <form onSubmit={handleSubmit} className="auth-fields" noValidate>
-            <label className="auth-label">
-              Email address
-              <input
-                type="email" value={email} autoComplete="email" required
-                placeholder="you@example.com"
-                onChange={e => setEmail(e.target.value)}
-              />
-            </label>
-            <label className="auth-label">
-              Password
-              <input
-                type="password" value={password} required
-                placeholder={tab === 'register' ? 'At least 8 characters' : '••••••••'}
-                autoComplete={tab === 'register' ? 'new-password' : 'current-password'}
-                onChange={e => setPassword(e.target.value)}
-              />
-            </label>
-            {tab === 'register' && (
+          {tab === 'verify' ? (
+            <>
+              <p style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '1.25rem' }}>
+                We sent a 6-digit code to <strong>{pendingEmail}</strong>.
+                Enter it below to activate your account.
+              </p>
+              <form onSubmit={handleSubmit} className="auth-fields" noValidate>
+                <label className="auth-label">
+                  Verification code
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={code}
+                    onChange={e => setCode(e.target.value)}
+                    placeholder="123456"
+                    maxLength={6}
+                    autoComplete="one-time-code"
+                    required
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="auth-submit"
+                  disabled={loading || code.trim().length < 6}
+                >
+                  {loading ? <span className="spinner" /> : 'Verify email'}
+                </button>
+              </form>
+              <p className="auth-switch">
+                Didn't receive it?{' '}
+                <button className="link-btn" type="button" onClick={handleResend} disabled={loading}>
+                  Resend code
+                </button>
+              </p>
+            </>
+          ) : (
+            <form onSubmit={handleSubmit} className="auth-fields" noValidate>
               <label className="auth-label">
-                Confirm password
+                Email address
                 <input
-                  type="password" value={confirm} required
-                  placeholder="Repeat password"
-                  autoComplete="new-password"
-                  onChange={e => setConfirm(e.target.value)}
+                  type="email" value={email} autoComplete="email" required
+                  placeholder="you@example.com"
+                  onChange={e => setEmail(e.target.value)}
                 />
               </label>
-            )}
-            <button
-              type="submit"
-              className="auth-submit"
-              disabled={loading || !email || !password}
-            >
-              {loading
-                ? <span className="spinner" />
-                : tab === 'login' ? 'Sign in'
-                : tab === 'register' ? 'Create account'
-                : 'Admin sign in'}
-            </button>
-          </form>
+              <label className="auth-label">
+                Password
+                <input
+                  type="password" value={password} required
+                  placeholder={tab === 'register' ? 'At least 8 characters' : '••••••••'}
+                  autoComplete={tab === 'register' ? 'new-password' : 'current-password'}
+                  onChange={e => setPassword(e.target.value)}
+                />
+              </label>
+              {tab === 'register' && (
+                <label className="auth-label">
+                  Confirm password
+                  <input
+                    type="password" value={confirm} required
+                    placeholder="Repeat password"
+                    autoComplete="new-password"
+                    onChange={e => setConfirm(e.target.value)}
+                  />
+                </label>
+              )}
+              <button
+                type="submit"
+                className="auth-submit"
+                disabled={loading || !email || !password}
+              >
+                {loading
+                  ? <span className="spinner" />
+                  : tab === 'login' ? 'Sign in'
+                  : tab === 'register' ? 'Create account'
+                  : 'Admin sign in'}
+              </button>
+            </form>
+          )}
 
           {tab === 'admin' && (
             <p className="auth-notice">Admin access requires staff credentials and VPN.</p>
           )}
 
-          <p className="auth-switch">
-            {tab === 'login'
-              ? <>No account? <button className="link-btn" type="button" onClick={() => switchTab('register')}>Register</button></>
-              : tab === 'register'
-              ? <>Have an account? <button className="link-btn" type="button" onClick={() => switchTab('login')}>Sign in</button></>
-              : <>Back to <button className="link-btn" type="button" onClick={() => switchTab('login')}>customer login</button></>}
-          </p>
+          {tab !== 'verify' && (
+            <p className="auth-switch">
+              {tab === 'login'
+                ? <>No account? <button className="link-btn" type="button" onClick={() => switchTab('register')}>Register</button></>
+                : tab === 'register'
+                ? <>Have an account? <button className="link-btn" type="button" onClick={() => switchTab('login')}>Sign in</button></>
+                : <>Back to <button className="link-btn" type="button" onClick={() => switchTab('login')}>customer login</button></>}
+            </p>
+          )}
         </div>
       </div>
     </div>

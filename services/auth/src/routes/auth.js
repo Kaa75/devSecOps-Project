@@ -4,6 +4,8 @@ const { Router } = require('express');
 const {
   SignUpCommand,
   InitiateAuthCommand,
+  ConfirmSignUpCommand,
+  ResendConfirmationCodeCommand,
 } = require('@aws-sdk/client-cognito-identity-provider');
 const { getCognitoClient, pools } = require('../cognito');
 
@@ -169,6 +171,80 @@ router.post('/refresh', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     console.error('refresh error', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// POST /auth/confirm — verify email with the code Cognito sends after sign-up
+router.post('/confirm', async (req, res) => {
+  const { email, code } = req.body || {};
+
+  if (!email || !code) {
+    return res.status(400).json({ message: 'email and code are required' });
+  }
+
+  try {
+    const client = getCognitoClient();
+    await client.send(
+      new ConfirmSignUpCommand({
+        ClientId: pools.customer.clientId,
+        Username: email,
+        ConfirmationCode: String(code),
+      })
+    );
+    return res.status(200).json({ message: 'Email confirmed' });
+  } catch (err) {
+    if (err.name === 'CodeMismatchException') {
+      return res.status(400).json({ message: 'Invalid verification code' });
+    }
+    if (err.name === 'ExpiredCodeException') {
+      return res.status(400).json({ message: 'Verification code has expired — request a new one' });
+    }
+    if (err.name === 'NotAuthorizedException') {
+      return res.status(409).json({ message: 'Account is already confirmed' });
+    }
+    if (err.name === 'UserNotFoundException') {
+      return res.status(404).json({ message: 'Account not found' });
+    }
+    if (err.name === 'TooManyRequestsException') {
+      return res.status(429).json({ message: 'Too many requests, please try again later' });
+    }
+    console.error('confirm error [%s]:', err.name, err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// POST /auth/resend-code — resend the email verification code
+router.post('/resend-code', async (req, res) => {
+  const { email } = req.body || {};
+
+  if (!email) {
+    return res.status(400).json({ message: 'email is required' });
+  }
+
+  try {
+    const client = getCognitoClient();
+    await client.send(
+      new ResendConfirmationCodeCommand({
+        ClientId: pools.customer.clientId,
+        Username: email,
+      })
+    );
+    return res.status(200).json({ message: 'Verification code resent' });
+  } catch (err) {
+    if (err.name === 'UserNotFoundException') {
+      return res.status(404).json({ message: 'Account not found' });
+    }
+    if (err.name === 'InvalidParameterException') {
+      return res.status(409).json({ message: 'Account is already confirmed' });
+    }
+    if (err.name === 'TooManyRequestsException') {
+      return res.status(429).json({ message: 'Too many requests, please try again later' });
+    }
+    if (err.name === 'LimitExceededException') {
+      return res.status(429).json({ message: 'Attempt limit exceeded, please try again later' });
+    }
+    console.error('resend-code error [%s]:', err.name, err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 });
