@@ -7,7 +7,7 @@ RUN npm install --omit=dev
 # ---- runtime stage ----
 FROM node:20-alpine AS runtime
 WORKDIR /app
-RUN npm install -g npm@latest
+RUN apk upgrade --no-cache && npm install -g npm@latest
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
