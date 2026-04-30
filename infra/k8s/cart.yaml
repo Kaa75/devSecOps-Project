@@ -22,8 +22,6 @@ spec:
         app: cart
     spec:
       serviceAccountName: cart
-      securityContext:
-        runAsNonRoot: true
       containers:
         - name: cart
           image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/cart:latest

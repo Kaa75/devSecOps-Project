@@ -22,8 +22,6 @@ spec:
         app: catalog
     spec:
       serviceAccountName: catalog
-      securityContext:
-        runAsNonRoot: true
       containers:
         - name: catalog
           image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/catalog:latest

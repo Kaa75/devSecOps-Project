@@ -22,8 +22,6 @@ spec:
         app: checkout
     spec:
       serviceAccountName: checkout
-      securityContext:
-        runAsNonRoot: true
       containers:
         - name: checkout
           image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/checkout:latest
