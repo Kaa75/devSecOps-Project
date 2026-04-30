@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './App.css';
 import LoginPage, { AUTH_STORAGE_KEY } from './LoginPage';
+import AdminPage from './AdminPage';
 
 // All API calls go through nginx reverse proxy → internal cluster DNS
 const CATALOG_API = '/api/catalog';
@@ -156,6 +157,7 @@ export default function App() {
 
   // ── Render ────────────────────────────────────────────────────
   if (!auth) return <LoginPage onAuth={handleAuth} />;
+  if (auth.isAdmin) return <AdminPage auth={auth} onLogout={handleLogout} />;
 
   return (
     <div className="shell">

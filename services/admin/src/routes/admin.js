@@ -10,6 +10,54 @@ const router = express.Router();
 router.use(requireAdminAuth);
 
 /**
+ * GET /admin/products
+ * List all products including inactive ones (Admin JWT required)
+ */
+router.get('/admin/products', async (req, res) => {
+  try {
+    const result = await breaker.fire(
+      `SELECT id, name, description, price, category, stock_quantity, image_key, is_active, created_at, updated_at
+       FROM products
+       ORDER BY created_at DESC`,
+      []
+    );
+    return res.status(200).json(result.rows);
+  } catch (err) {
+    console.error('List products error:', err.message);
+    if (err.status === 503) return res.status(503).json({ error: 'Service temporarily unavailable' });
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /admin/orders
+ * List all orders across all customers (Admin JWT required)
+ */
+router.get('/admin/orders', async (req, res) => {
+  try {
+    const result = await breaker.fire(
+      `SELECT o.id, o.customer_email, o.status, o.total_amount, o.created_at,
+              json_agg(json_build_object(
+                'product_id', oi.product_id,
+                'quantity', oi.quantity,
+                'unit_price', oi.unit_price
+              ) ORDER BY oi.id) AS items
+       FROM orders o
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       GROUP BY o.id
+       ORDER BY o.created_at DESC
+       LIMIT 200`,
+      []
+    );
+    return res.status(200).json(result.rows);
+  } catch (err) {
+    console.error('List orders error:', err.message);
+    if (err.status === 503) return res.status(503).json({ error: 'Service temporarily unavailable' });
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * POST /admin/products
  * Create a new product (Admin JWT required)
  */
@@ -134,6 +182,26 @@ router.post('/admin/products/:id/deactivate', async (req, res) => {
     if (err.status === 503) {
       return res.status(503).json({ error: 'Service temporarily unavailable' });
     }
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /admin/products/:id/activate
+ * Re-activate a deactivated product (Admin JWT required)
+ */
+router.post('/admin/products/:id/activate', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await breaker.fire(
+      `UPDATE products SET is_active = TRUE, updated_at = NOW() WHERE id = $1 RETURNING id, is_active`,
+      [id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    return res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error('Activate product error:', err.message);
+    if (err.status === 503) return res.status(503).json({ error: 'Service temporarily unavailable' });
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
