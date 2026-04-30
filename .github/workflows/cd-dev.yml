@@ -107,6 +107,20 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name shopcloud-default --region us-east-1
 
+      - name: Apply manifest changes
+        run: |
+          kubectl apply -n shopcloud \
+            -f infra/k8s/namespace.yaml \
+            -f infra/k8s/catalog.yaml \
+            -f infra/k8s/cart.yaml \
+            -f infra/k8s/checkout.yaml \
+            -f infra/k8s/auth.yaml \
+            -f infra/k8s/admin.yaml \
+            -f infra/k8s/frontend.yaml \
+            -f infra/k8s/hpa.yaml \
+            -f infra/k8s/network-policies.yaml
+          kubectl apply -f infra/k8s/fluent-bit.yaml
+
       - name: Update catalog image
         run: kubectl set image deployment/catalog catalog=$ECR_REGISTRY/shopcloud/default/catalog:$IMAGE_TAG -n shopcloud
 
@@ -124,9 +138,6 @@ jobs:
 
       - name: Update frontend image
         run: kubectl set image deployment/frontend frontend=$ECR_REGISTRY/shopcloud/default/frontend:$IMAGE_TAG -n shopcloud
-
-      - name: Apply manifest changes
-        run: kubectl apply -f infra/k8s/ -n shopcloud
 
       - name: Wait for rollouts
         run: |
