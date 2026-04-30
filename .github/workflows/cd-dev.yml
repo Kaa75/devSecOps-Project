@@ -107,13 +107,38 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name shopcloud-default --region us-east-1
 
-      - name: Sync Cognito client IDs into shopcloud-secrets
+      - name: Validate Cognito secrets are set
         env:
           COGNITO_CUSTOMER_CLIENT_ID: ${{ secrets.COGNITO_CUSTOMER_CLIENT_ID }}
           COGNITO_ADMIN_CLIENT_ID: ${{ secrets.COGNITO_ADMIN_CLIENT_ID }}
+          COGNITO_CUSTOMER_POOL_ID: ${{ secrets.COGNITO_CUSTOMER_POOL_ID }}
+          COGNITO_ADMIN_POOL_ID: ${{ secrets.COGNITO_ADMIN_POOL_ID }}
+        run: |
+          missing=()
+          [[ -z "$COGNITO_CUSTOMER_CLIENT_ID" ]] && missing+=("COGNITO_CUSTOMER_CLIENT_ID")
+          [[ -z "$COGNITO_ADMIN_CLIENT_ID" ]] && missing+=("COGNITO_ADMIN_CLIENT_ID")
+          [[ -z "$COGNITO_CUSTOMER_POOL_ID" ]] && missing+=("COGNITO_CUSTOMER_POOL_ID")
+          [[ -z "$COGNITO_ADMIN_POOL_ID" ]] && missing+=("COGNITO_ADMIN_POOL_ID")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "ERROR: The following GitHub Secrets are not set: ${missing[*]}"
+            echo "Set them in Settings → Secrets → Actions before deploying."
+            exit 1
+          fi
+
+      - name: Sync Cognito IDs into shopcloud-secrets
+        env:
+          COGNITO_CUSTOMER_CLIENT_ID: ${{ secrets.COGNITO_CUSTOMER_CLIENT_ID }}
+          COGNITO_ADMIN_CLIENT_ID: ${{ secrets.COGNITO_ADMIN_CLIENT_ID }}
+          COGNITO_CUSTOMER_POOL_ID: ${{ secrets.COGNITO_CUSTOMER_POOL_ID }}
+          COGNITO_ADMIN_POOL_ID: ${{ secrets.COGNITO_ADMIN_POOL_ID }}
         run: |
           kubectl patch secret shopcloud-secrets -n shopcloud \
-            -p "{\"stringData\":{\"COGNITO_CUSTOMER_CLIENT_ID\":\"$COGNITO_CUSTOMER_CLIENT_ID\",\"COGNITO_ADMIN_CLIENT_ID\":\"$COGNITO_ADMIN_CLIENT_ID\"}}"
+            -p "{\"stringData\":{
+              \"COGNITO_CUSTOMER_CLIENT_ID\":\"$COGNITO_CUSTOMER_CLIENT_ID\",
+              \"COGNITO_ADMIN_CLIENT_ID\":\"$COGNITO_ADMIN_CLIENT_ID\",
+              \"COGNITO_CUSTOMER_POOL_ID\":\"$COGNITO_CUSTOMER_POOL_ID\",
+              \"COGNITO_ADMIN_POOL_ID\":\"$COGNITO_ADMIN_POOL_ID\"
+            }}"
 
       - name: Apply manifest changes
         run: |

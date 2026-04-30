@@ -59,6 +59,47 @@ describe('POST /auth/register', () => {
     const res = await request(app).post('/auth/register').send({ email: 'x@x.com' });
     expect(res.status).toBe(400);
   });
+
+  it('returns 400 on InvalidParameterException (e.g. bad email format)', async () => {
+    const err = new Error('Invalid email');
+    err.name = 'InvalidParameterException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ email: 'notanemail', password: 'Password1!' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 500 on ResourceNotFoundException (misconfigured clientId)', async () => {
+    const err = new Error('User pool client X does not exist');
+    err.name = 'ResourceNotFoundException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ email: 'user@example.com', password: 'Password1!' });
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 500 on CodeDeliveryFailureException with specific message', async () => {
+    const err = new Error('Unable to deliver code');
+    err.name = 'CodeDeliveryFailureException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ email: 'user@example.com', password: 'Password1!' });
+    expect(res.status).toBe(500);
+    expect(res.body.message).toMatch(/verification email/i);
+  });
+
+  it('returns 429 on TooManyRequestsException', async () => {
+    const err = new Error('Rate exceeded');
+    err.name = 'TooManyRequestsException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/register')
+      .send({ email: 'user@example.com', password: 'Password1!' });
+    expect(res.status).toBe(429);
+  });
 });
 
 // ── /auth/login ───────────────────────────────────────────────────────────────
@@ -107,6 +148,27 @@ describe('POST /auth/login', () => {
       .send({ email: 'ghost@example.com', password: 'Password1!' });
     expect(res.status).toBe(401);
     expect(res.body.message).toBe('Invalid credentials');
+  });
+
+  it('returns 403 when user has not confirmed email', async () => {
+    const err = new Error('User not confirmed');
+    err.name = 'UserNotConfirmedException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ email: 'unconfirmed@example.com', password: 'Password1!' });
+    expect(res.status).toBe(403);
+    expect(res.body.message).toMatch(/not confirmed/i);
+  });
+
+  it('returns 429 on TooManyRequestsException', async () => {
+    const err = new Error('Rate exceeded');
+    err.name = 'TooManyRequestsException';
+    mockSend.mockRejectedValueOnce(err);
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ email: 'user@example.com', password: 'Password1!' });
+    expect(res.status).toBe(429);
   });
 });
 
