@@ -102,11 +102,15 @@ export default function AdminPage({ auth, onLogout }) {
     if (isNaN(qty) || qty < 0) { notify('Enter a valid stock quantity.', 'err'); return; }
     try {
       const r = await apiFetch(`${ADMIN_API}/admin/products/${id}/stock`, { method: 'PATCH', body: JSON.stringify({ stock_quantity: qty }) }, auth.token);
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${r.status}`);
+      }
+      const data = await r.json();
       setStockEdit(s => { const n = { ...s }; delete n[id]; return n; });
-      setProducts(ps => ps.map(p => p.id === id ? { ...p, stock_quantity: qty } : p));
+      setProducts(ps => ps.map(p => p.id === id ? { ...p, stock_quantity: data.stock_quantity ?? qty } : p));
       notify('Stock updated.');
-    } catch { notify('Stock update failed.', 'err'); }
+    } catch (e) { notify(`Stock update failed: ${e.message}`, 'err'); }
   };
 
   // ── Deactivate / Activate ─────────────────────────────────────

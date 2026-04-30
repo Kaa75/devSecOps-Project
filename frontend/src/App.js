@@ -70,10 +70,9 @@ export default function App() {
   };
 
   // ── Products ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (!auth) return;
+  const fetchProducts = (token) => {
     setLoadingProds(true);
-    apiFetch(`${CATALOG_API}/products?limit=48`, {}, auth.token)
+    apiFetch(`${CATALOG_API}/products?limit=48`, {}, token)
       .then(r => r.json())
       .then(data => {
         const items = Array.isArray(data) ? data : data.products ?? [];
@@ -82,7 +81,22 @@ export default function App() {
       })
       .catch(() => { setProducts(DEMO_PRODUCTS); setLiveData(false); })
       .finally(() => setLoadingProds(false));
-  }, [auth]);
+  };
+
+  useEffect(() => {
+    if (!auth) return;
+    fetchProducts(auth.token);
+  }, [auth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch when tab regains focus so stock changes made by admin are visible
+  useEffect(() => {
+    if (!auth) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchProducts(auth.token);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [auth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Orders — fetch from backend on login ──────────────────────
   useEffect(() => {
@@ -297,6 +311,14 @@ export default function App() {
         <span className={`status-pill ${auth.demo ? 'demo' : 'live'}`}>
           {auth.demo ? '○ Auth offline (demo)' : '● Customer JWT'}
         </span>
+        <button
+          className="btn-ghost sm"
+          style={{ marginLeft: 'auto', fontSize: '0.75rem' }}
+          disabled={loadingProds}
+          onClick={() => fetchProducts(auth.token)}
+        >
+          {loadingProds ? '↻ Refreshing…' : '↻ Refresh products'}
+        </button>
       </div>
 
       {/* ── SHOP PAGE ── */}
