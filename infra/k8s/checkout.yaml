@@ -23,7 +23,7 @@ spec:
         - name: checkout
           image: 379604374648.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/checkout:latest
           ports:
-            - containerPort: 3000
+            - containerPort: 3002
           env:
             - name: DATABASE_URL
               valueFrom:
@@ -50,13 +50,13 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 3000
+              port: 3002
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /health
-              port: 3000
+              port: 3002
             initialDelaySeconds: 10
             periodSeconds: 5
           resources:
@@ -107,4 +107,4 @@ spec:
     app: checkout
   ports:
     - port: 80
-      targetPort: 3000
+      targetPort: 3002
