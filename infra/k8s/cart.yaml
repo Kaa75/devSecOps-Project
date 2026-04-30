@@ -78,7 +78,6 @@ spec:
               memory: "64Mi"
               cpu: "100m"
           securityContext:
-            runAsNonRoot: true
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
