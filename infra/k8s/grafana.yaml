@@ -86,23 +86,21 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "Invoice Queue Depth",
+          "title": "Invoice Lambda Invocations",
           "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
           "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
           "targets": [
             {
-              "namespace": "AWS/SQS",
-              "metricName": "ApproximateNumberOfMessagesVisible",
-              "dimensions": { "QueueName": "shopcloud-default-invoice" },
-              "statistic": "Maximum",
-              "region": "us-east-1"
-            },
-            {
-              "namespace": "AWS/SQS",
-              "metricName": "ApproximateNumberOfMessagesVisible",
-              "dimensions": { "QueueName": "shopcloud-default-invoice-dlq" },
-              "statistic": "Maximum",
-              "region": "us-east-1"
+              "refId": "A",
+              "id": "",
+              "namespace": "AWS/Lambda",
+              "metricName": "Invocations",
+              "dimensions": { "FunctionName": "shopcloud-default-invoice" },
+              "statistic": "Sum",
+              "period": "300",
+              "region": "us-east-1",
+              "metricQueryType": 0,
+              "matchExact": true
             }
           ]
         },
@@ -113,11 +111,16 @@ data:
           "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
           "targets": [
             {
+              "refId": "A",
+              "id": "",
               "namespace": "AWS/Lambda",
               "metricName": "Errors",
               "dimensions": { "FunctionName": "shopcloud-default-invoice" },
               "statistic": "Sum",
-              "region": "us-east-1"
+              "period": "300",
+              "region": "us-east-1",
+              "metricQueryType": 0,
+              "matchExact": true
             }
           ]
         },
@@ -128,26 +131,36 @@ data:
           "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
           "targets": [
             {
+              "refId": "A",
+              "id": "",
               "namespace": "AWS/Lambda",
               "metricName": "Duration",
               "dimensions": { "FunctionName": "shopcloud-default-invoice" },
               "statistic": "Average",
-              "region": "us-east-1"
+              "period": "300",
+              "region": "us-east-1",
+              "metricQueryType": 0,
+              "matchExact": true
             }
           ]
         },
         {
           "type": "timeseries",
-          "title": "CloudFront Requests",
+          "title": "Invoice Messages Sent",
           "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
           "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
           "targets": [
             {
-              "namespace": "AWS/CloudFront",
-              "metricName": "Requests",
-              "dimensions": { "Region": "Global" },
+              "refId": "A",
+              "id": "",
+              "namespace": "AWS/SQS",
+              "metricName": "NumberOfMessagesSent",
+              "dimensions": { "QueueName": "shopcloud-default-invoice" },
               "statistic": "Sum",
-              "region": "us-east-1"
+              "period": "300",
+              "region": "us-east-1",
+              "metricQueryType": 0,
+              "matchExact": true
             }
           ]
         }
