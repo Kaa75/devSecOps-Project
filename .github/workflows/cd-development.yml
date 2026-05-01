@@ -1,9 +1,9 @@
-name: CD - Production Deploy
+name: CD - Development Deploy
 
 on:
   push:
     branches:
-      - main
+      - dev
 
 permissions:
   contents: read
@@ -36,10 +36,10 @@ jobs:
     name: Build & Push Images to ECR
     runs-on: ubuntu-latest
     needs: test
-    environment: production
+    environment: development
     env:
       ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
-      IMAGE_TAG: ${{ github.sha }}
+      IMAGE_TAG: dev-${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.CD_PROD_ROLE_ARN }}
+          role-to-assume: ${{ secrets.CD_DEV_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Login to Amazon ECR
@@ -89,14 +89,14 @@ jobs:
           docker push $ECR_REGISTRY/shopcloud/default/invoice-lambda:$IMAGE_TAG
 
   deploy:
-    name: Deploy to Production EKS
+    name: Deploy to Development EKS
     runs-on: ubuntu-latest
     needs: build-push
-    environment: production
+    environment: development
     env:
       ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
-      IMAGE_TAG: ${{ github.sha }}
-      K8S_NAMESPACE: shopcloud
+      IMAGE_TAG: dev-${{ github.sha }}
+      K8S_NAMESPACE: shopcloud-dev
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -104,57 +104,41 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.CD_PROD_ROLE_ARN }}
+          role-to-assume: ${{ secrets.CD_DEV_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name shopcloud-default --region us-east-1
 
-      - name: Validate Cognito secrets are set
-        env:
-          COGNITO_CUSTOMER_CLIENT_ID: ${{ secrets.COGNITO_CUSTOMER_CLIENT_ID }}
-          COGNITO_ADMIN_CLIENT_ID: ${{ secrets.COGNITO_ADMIN_CLIENT_ID }}
-          COGNITO_CUSTOMER_POOL_ID: ${{ secrets.COGNITO_CUSTOMER_POOL_ID }}
-          COGNITO_ADMIN_POOL_ID: ${{ secrets.COGNITO_ADMIN_POOL_ID }}
+      - name: Ensure target namespace exists
+        run: kubectl create namespace $K8S_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Validate Kubernetes app secret exists
         run: |
-          missing=()
-          [[ -z "$COGNITO_CUSTOMER_CLIENT_ID" ]] && missing+=("COGNITO_CUSTOMER_CLIENT_ID")
-          [[ -z "$COGNITO_ADMIN_CLIENT_ID" ]] && missing+=("COGNITO_ADMIN_CLIENT_ID")
-          [[ -z "$COGNITO_CUSTOMER_POOL_ID" ]] && missing+=("COGNITO_CUSTOMER_POOL_ID")
-          [[ -z "$COGNITO_ADMIN_POOL_ID" ]] && missing+=("COGNITO_ADMIN_POOL_ID")
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "ERROR: The following GitHub Secrets are not set: ${missing[*]}"
+          if ! kubectl get secret shopcloud-secrets -n $K8S_NAMESPACE >/dev/null 2>&1; then
+            echo "ERROR: Kubernetes secret shopcloud-secrets does not exist in namespace $K8S_NAMESPACE."
             exit 1
           fi
 
-      - name: Sync Cognito IDs into shopcloud-secrets
-        env:
-          COGNITO_CUSTOMER_CLIENT_ID: ${{ secrets.COGNITO_CUSTOMER_CLIENT_ID }}
-          COGNITO_ADMIN_CLIENT_ID: ${{ secrets.COGNITO_ADMIN_CLIENT_ID }}
-          COGNITO_CUSTOMER_POOL_ID: ${{ secrets.COGNITO_CUSTOMER_POOL_ID }}
-          COGNITO_ADMIN_POOL_ID: ${{ secrets.COGNITO_ADMIN_POOL_ID }}
+      - name: Render manifests for development namespace
         run: |
-          kubectl patch secret shopcloud-secrets -n $K8S_NAMESPACE \
-            -p "{\"stringData\":{
-              \"COGNITO_CUSTOMER_CLIENT_ID\":\"$COGNITO_CUSTOMER_CLIENT_ID\",
-              \"COGNITO_ADMIN_CLIENT_ID\":\"$COGNITO_ADMIN_CLIENT_ID\",
-              \"COGNITO_CUSTOMER_POOL_ID\":\"$COGNITO_CUSTOMER_POOL_ID\",
-              \"COGNITO_ADMIN_POOL_ID\":\"$COGNITO_ADMIN_POOL_ID\"
-            }}"
+          mkdir -p rendered-k8s
+          cp infra/k8s/*.yaml rendered-k8s/
+          perl -pi -e 's/namespace: shopcloud/namespace: $ENV{K8S_NAMESPACE}/g; s/name: shopcloud$/name: $ENV{K8S_NAMESPACE}/g; s/environment: production/environment: development/g; s#image:\s*\S+/shopcloud/default/([a-z-]+):\S+#image: $ENV{ECR_REGISTRY}/shopcloud/default/$1:$ENV{IMAGE_TAG}#g' rendered-k8s/*.yaml
 
       - name: Apply manifest changes
         run: |
+          kubectl apply -f rendered-k8s/namespace.yaml
           kubectl apply -n $K8S_NAMESPACE \
-            -f infra/k8s/namespace.yaml \
-            -f infra/k8s/catalog.yaml \
-            -f infra/k8s/cart.yaml \
-            -f infra/k8s/checkout.yaml \
-            -f infra/k8s/auth.yaml \
-            -f infra/k8s/admin.yaml \
-            -f infra/k8s/frontend.yaml \
-            -f infra/k8s/hpa.yaml \
-            -f infra/k8s/network-policies.yaml
-          kubectl apply -f infra/k8s/fluent-bit.yaml
+            -f rendered-k8s/catalog.yaml \
+            -f rendered-k8s/cart.yaml \
+            -f rendered-k8s/checkout.yaml \
+            -f rendered-k8s/auth.yaml \
+            -f rendered-k8s/admin.yaml \
+            -f rendered-k8s/frontend.yaml \
+            -f rendered-k8s/hpa.yaml \
+            -f rendered-k8s/network-policies.yaml
+          kubectl apply -f rendered-k8s/fluent-bit.yaml
 
       - name: Update catalog image
         run: kubectl set image deployment/catalog catalog=$ECR_REGISTRY/shopcloud/default/catalog:$IMAGE_TAG -n $K8S_NAMESPACE
@@ -184,12 +168,12 @@ jobs:
           kubectl rollout status deployment/frontend -n $K8S_NAMESPACE --timeout=5m
 
   smoke-tests:
-    name: Production Smoke Tests
+    name: Development Smoke Tests
     runs-on: ubuntu-latest
     needs: deploy
-    environment: production
+    environment: development
     env:
-      K8S_NAMESPACE: shopcloud
+      K8S_NAMESPACE: shopcloud-dev
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -197,7 +181,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.CD_PROD_ROLE_ARN }}
+          role-to-assume: ${{ secrets.CD_DEV_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Update kubeconfig
