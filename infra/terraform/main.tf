@@ -46,16 +46,16 @@ module "networking" {
 module "eks" {
   source = "./modules/eks"
 
-  cluster_name        = "${var.project}-${terraform.workspace}"
-  environment         = terraform.workspace
-  project             = var.project
-  vpc_id              = module.networking.vpc_id
-  private_subnet_ids  = module.networking.private_subnet_ids
-  node_min_size       = local.config.eks_node_min
-  node_max_size       = local.config.eks_node_max
-  node_desired_size   = local.config.eks_node_min
-  node_instance_type  = "m7i-flex.large"
-  kms_key_arn         = module.kms.key_arn
+  cluster_name       = "${var.project}-${terraform.workspace}"
+  environment        = terraform.workspace
+  project            = var.project
+  vpc_id             = module.networking.vpc_id
+  private_subnet_ids = module.networking.private_subnet_ids
+  node_min_size      = local.config.eks_node_min
+  node_max_size      = local.config.eks_node_max
+  node_desired_size  = local.config.eks_node_desired
+  node_instance_type = "m7i-flex.large"
+  kms_key_arn        = module.kms.key_arn
 }
 
 # ─── KMS ─────────────────────────────────────────────────────────────────────
@@ -148,15 +148,15 @@ module "s3" {
 module "lambda" {
   source = "./modules/lambda"
 
-  environment               = terraform.workspace
-  project                   = var.project
-  owner                     = var.owner
-  ecr_image_uri             = var.ecr_image_uri_invoice
-  sqs_queue_arn             = module.sqs.queue_arn
-  s3_bucket_arn             = module.s3.bucket_arn
-  kms_key_arn               = module.kms.key_arn
-  ses_from_email            = var.ses_from_email
-  oidc_provider_arn         = module.eks.oidc_provider_arn
+  environment       = terraform.workspace
+  project           = var.project
+  owner             = var.owner
+  ecr_image_uri     = var.ecr_image_uri_invoice
+  sqs_queue_arn     = module.sqs.queue_arn
+  s3_bucket_arn     = module.s3.bucket_arn
+  kms_key_arn       = module.kms.key_arn
+  ses_from_email    = var.ses_from_email
+  oidc_provider_arn = module.eks.oidc_provider_arn
 }
 
 # ─── ECR ─────────────────────────────────────────────────────────────────────
@@ -217,15 +217,15 @@ module "route53" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  project                = var.project
-  environment            = terraform.workspace
-  owner                  = var.owner
-  alb_arn_suffix         = var.alb_arn_suffix
+  project                   = var.project
+  environment               = terraform.workspace
+  owner                     = var.owner
+  alb_arn_suffix            = var.alb_arn_suffix
   target_group_arn_suffixes = var.target_group_arn_suffixes
-  rds_instance_id        = "disabled-rds"
-  elasticache_cluster_id = module.elasticache.replication_group_id
-  sqs_dlq_name           = module.sqs.dlq_name
-  alert_email            = var.alert_email
+  rds_instance_id           = "disabled-rds"
+  elasticache_cluster_id    = module.elasticache.replication_group_id
+  sqs_dlq_name              = module.sqs.dlq_name
+  alert_email               = var.alert_email
 }
 
 # ─── X-Ray Distributed Tracing ───────────────────────────────────────────────
@@ -258,10 +258,10 @@ module "cloudwatch_dashboard" {
 module "guardduty" {
   source = "./modules/guardduty"
 
-  project       = var.project
-  environment   = terraform.workspace
-  owner         = var.owner
-  sns_topic_arn = module.monitoring.sns_topic_arn
+  project          = var.project
+  environment      = terraform.workspace
+  owner            = var.owner
+  sns_topic_arn    = module.monitoring.sns_topic_arn
   enable_guardduty = false
 }
 

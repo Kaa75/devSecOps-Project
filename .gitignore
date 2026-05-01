@@ -49,3 +49,4 @@ infra/terraform/override.tf.json
 # Lambda build artifacts
 functions/invoice-lambda/.build/
 .claude/settings.local.json
+terraform.exe

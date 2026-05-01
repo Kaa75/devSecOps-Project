@@ -53,6 +53,12 @@ variable "kms_key_arn" {
   type        = string
 }
 
+variable "irsa_namespaces" {
+  description = "Kubernetes namespaces whose service accounts may assume application IRSA roles"
+  type        = list(string)
+  default     = ["shopcloud", "shopcloud-dev"]
+}
+
 variable "enable_cloudwatch_observability_addon" {
   description = "Whether to create the amazon-cloudwatch-observability EKS add-on"
   type        = bool
