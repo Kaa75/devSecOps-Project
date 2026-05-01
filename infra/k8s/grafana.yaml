@@ -1,0 +1,300 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    project: shopcloud
+    purpose: observability
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/audit-version: latest
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana
+  namespace: monitoring
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::379604374648:role/shopcloud-default-irsa-grafana
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  cloudwatch.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: CloudWatch
+        uid: cloudwatch
+        type: cloudwatch
+        access: proxy
+        isDefault: true
+        jsonData:
+          authType: default
+          defaultRegion: us-east-1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-providers
+  namespace: monitoring
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: shopcloud
+        orgId: 1
+        folder: ShopCloud
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-shopcloud-dashboards
+  namespace: monitoring
+data:
+  shopcloud-overview.json: |
+    {
+      "uid": "shopcloud-overview",
+      "title": "ShopCloud Security & Monitoring",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "type": "text",
+          "title": "Operational Evidence",
+          "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+          "options": {
+            "mode": "markdown",
+            "content": "ShopCloud monitoring evidence: EKS workloads, invoice SQS queue, invoice Lambda, CloudFront/WAF, CloudWatch alarms, X-Ray traces, and Fluent Bit logs. Grafana is internal-only and reads AWS telemetry through IRSA."
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Invoice Queue Depth",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+          "targets": [
+            {
+              "namespace": "AWS/SQS",
+              "metricName": "ApproximateNumberOfMessagesVisible",
+              "dimensions": { "QueueName": "shopcloud-default-invoice" },
+              "statistic": "Maximum",
+              "region": "us-east-1"
+            },
+            {
+              "namespace": "AWS/SQS",
+              "metricName": "ApproximateNumberOfMessagesVisible",
+              "dimensions": { "QueueName": "shopcloud-default-invoice-dlq" },
+              "statistic": "Maximum",
+              "region": "us-east-1"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Invoice Lambda Errors",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+          "targets": [
+            {
+              "namespace": "AWS/Lambda",
+              "metricName": "Errors",
+              "dimensions": { "FunctionName": "shopcloud-default-invoice" },
+              "statistic": "Sum",
+              "region": "us-east-1"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Invoice Lambda Duration",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+          "targets": [
+            {
+              "namespace": "AWS/Lambda",
+              "metricName": "Duration",
+              "dimensions": { "FunctionName": "shopcloud-default-invoice" },
+              "statistic": "Average",
+              "region": "us-east-1"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "CloudFront Requests",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+          "targets": [
+            {
+              "namespace": "AWS/CloudFront",
+              "metricName": "Requests",
+              "dimensions": { "Region": "Global" },
+              "statistic": "Sum",
+              "region": "us-east-1"
+            }
+          ]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      serviceAccountName: grafana
+      securityContext:
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.4.3
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: admin-user
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: admin-password
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false"
+            - name: GF_SERVER_ROOT_URL
+              value: "http://localhost:3000"
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: dashboard-providers
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+              readOnly: true
+            - name: storage
+              mountPath: /var/lib/grafana
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 472
+            runAsGroup: 472
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-providers
+          configMap:
+            name: grafana-dashboard-providers
+        - name: dashboards
+          configMap:
+            name: grafana-shopcloud-dashboards
+        - name: storage
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grafana-internal-only
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: grafana
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to:
+        - namespaceSelector: {}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53

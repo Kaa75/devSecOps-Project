@@ -256,6 +256,37 @@ module "xray" {
   owner       = var.owner
 }
 
+resource "aws_iam_role" "grafana_irsa" {
+  name = "${var.project}-${terraform.workspace}-irsa-grafana"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = module.eks.oidc_provider_arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${replace(module.eks.oidc_provider_url, "https://", "")}:aud" = "sts.amazonaws.com"
+          "${replace(module.eks.oidc_provider_url, "https://", "")}:sub" = "system:serviceaccount:monitoring:grafana"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "grafana_cloudwatch_readonly" {
+  role       = aws_iam_role.grafana_irsa.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "grafana_xray_readonly" {
+  role       = aws_iam_role.grafana_irsa.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayReadOnlyAccess"
+}
+
 # ─── CloudWatch Dashboard ─────────────────────────────────────────────────────
 
 module "cloudwatch_dashboard" {
