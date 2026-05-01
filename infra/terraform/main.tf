@@ -154,6 +154,7 @@ module "lambda" {
   ecr_image_uri     = var.ecr_image_uri_invoice
   sqs_queue_arn     = module.sqs.queue_arn
   s3_bucket_arn     = module.s3.bucket_arn
+  s3_bucket_name    = module.s3.bucket_id
   kms_key_arn       = module.kms.key_arn
   ses_from_email    = var.ses_from_email
   oidc_provider_arn = module.eks.oidc_provider_arn

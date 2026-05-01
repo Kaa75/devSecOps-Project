@@ -137,6 +137,12 @@ terraform apply
 
 Production deployments use the GitHub `production` environment, which should keep required reviewer protection enabled. Development deployments use the GitHub `development` environment without required reviewers.
 
+### Invoice delivery
+
+Checkout stores the order with `pending` status, publishes an invoice event to SQS, and returns without waiting for PDF/email work. The invoice worker is an AWS Lambda function subscribed to the invoice queue. It writes PDFs to S3 and sends the customer a pre-signed download link through SES.
+
+SES requires the configured `ses_from_email` sender identity to be verified before invoices can be delivered. In an SES sandbox account, recipient addresses must also be verified or SES production access must be requested.
+
 ### Rollback
 
 For a failed production promotion, the workflow automatically runs `kubectl rollout undo` for all application deployments and uploads a short-lived deployment snapshot artifact.
