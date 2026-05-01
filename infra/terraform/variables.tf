@@ -29,6 +29,14 @@ variable "hosted_zone_id" {
 variable "ses_from_email" {
   description = "Verified SES sender email address for invoice delivery"
   type        = string
+
+  validation {
+    condition = (
+      can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.ses_from_email)) &&
+      !endswith(lower(var.ses_from_email), ".local")
+    )
+    error_message = "ses_from_email must be a real, verified SES sender email address. Placeholder or .local addresses cannot deliver invoices."
+  }
 }
 
 variable "server_certificate_arn" {
@@ -50,6 +58,11 @@ variable "saml_provider_arn" {
 variable "ecr_image_uri_invoice" {
   description = "ECR image URI for the Invoice Lambda function"
   type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{12}\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com/.+:.+$", var.ecr_image_uri_invoice))
+    error_message = "ecr_image_uri_invoice must be a fully qualified ECR image URI including a tag."
+  }
 }
 
 variable "rotation_lambda_arn" {

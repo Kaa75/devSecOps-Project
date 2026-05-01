@@ -161,9 +161,10 @@ The Lambda, SQS event source mapping, S3 bucket configuration, and SES identity 
 
 ### Known follow-up work
 
-- Apply the merged Terraform invoice changes so AWS creates/updates the invoice Lambda and SQS trigger.
+- Set `ses_from_email` to a real SES-verifiable sender address before applying invoice Lambda infrastructure; placeholder `.local` senders are rejected by Terraform validation.
+- Apply the merged Terraform invoice changes so AWS creates/updates the invoice Lambda and SQS trigger after the SES sender value is corrected.
 - Verify the SES sender identity configured by `ses_from_email`; if the account is in SES sandbox, verify test recipient addresses too or request SES production access.
-- Restrict the `admin` service so it is not publicly reachable. The intended architecture is private admin access through VPN and an internal load balancer, not public `LoadBalancer` services.
+- Keep the `admin` API off the public storefront path. The durable config returns 404 for `/api/admin/`, and the admin Kubernetes service is internal-only.
 - Keep production reviewer protection enabled in the GitHub `production` environment.
 
 ### Rollback

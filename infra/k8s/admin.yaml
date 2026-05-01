@@ -75,7 +75,7 @@ metadata:
   name: admin
   namespace: shopcloud
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: admin
   ports:
