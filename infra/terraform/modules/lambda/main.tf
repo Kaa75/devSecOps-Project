@@ -55,15 +55,18 @@ resource "aws_iam_role_policy" "invoice_lambda" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "S3PutInvoice"
+        Sid    = "S3InvoiceObjects"
         Effect = "Allow"
-        Action = ["s3:PutObject"]
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject"
+        ]
         Resource = "${var.s3_bucket_arn}/invoices/*"
       },
       {
-        Sid    = "SESSendEmail"
-        Effect = "Allow"
-        Action = ["ses:SendEmail", "ses:SendRawEmail"]
+        Sid      = "SESSendEmail"
+        Effect   = "Allow"
+        Action   = ["ses:SendEmail", "ses:SendRawEmail"]
         Resource = "*"
         Condition = {
           StringEquals = {
@@ -72,15 +75,15 @@ resource "aws_iam_role_policy" "invoice_lambda" {
         }
       },
       {
-        Sid    = "SecretsManagerGet"
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue"]
+        Sid      = "SecretsManagerGet"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
         Resource = "arn:aws:secretsmanager:*:${data.aws_caller_identity.current.account_id}:secret:${var.project}/${var.environment}/*"
       },
       {
-        Sid    = "KMSDecrypt"
-        Effect = "Allow"
-        Action = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Sid      = "KMSDecrypt"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
         Resource = var.kms_key_arn
       },
       {
@@ -107,32 +110,36 @@ resource "aws_iam_role_policy" "invoice_lambda" {
   })
 }
 
+resource "aws_ses_email_identity" "invoice_sender" {
+  email = var.ses_from_email
+}
+
 # Lambda function deployed from ECR image
-# Commented out - Docker image must be built and pushed to ECR first
-# Once image is available, uncomment this resource
-# resource "aws_lambda_function" "invoice" {
-#   function_name = local.function_name
-#   role          = aws_iam_role.invoice_lambda.arn
-#   package_type  = "Image"
-#   image_uri     = var.ecr_image_uri
-#   timeout       = 300
-#   memory_size   = 512
+resource "aws_lambda_function" "invoice" {
+  function_name = local.function_name
+  role          = aws_iam_role.invoice_lambda.arn
+  package_type  = "Image"
+  image_uri     = var.ecr_image_uri
+  timeout       = 300
+  memory_size   = 512
 
-#   environment {
-#     variables = {
-#       SES_FROM_EMAIL = var.ses_from_email
-#       ENVIRONMENT    = var.environment
-#     }
-#   }
+  environment {
+    variables = {
+      SES_FROM_EMAIL = var.ses_from_email
+      S3_BUCKET_NAME = var.s3_bucket_name
+      ENVIRONMENT    = var.environment
+    }
+  }
 
-#   tags = local.common_tags
-# }
+  depends_on = [aws_iam_role_policy.invoice_lambda]
+
+  tags = local.common_tags
+}
 
 # SQS event source mapping (batch size 1)
-# Disabled - depends on Lambda function being created
-# resource "aws_lambda_event_source_mapping" "invoice_sqs" {
-#   event_source_arn = var.sqs_queue_arn
-#   function_name    = aws_lambda_function.invoice.arn
-#   batch_size       = 1
-#   enabled          = true
-# }
+resource "aws_lambda_event_source_mapping" "invoice_sqs" {
+  event_source_arn = var.sqs_queue_arn
+  function_name    = aws_lambda_function.invoice.arn
+  batch_size       = 1
+  enabled          = true
+}

@@ -172,6 +172,23 @@ resource "aws_eks_addon" "cloudwatch_observability" {
 
 locals {
   oidc_provider_id = replace(aws_iam_openid_connect_provider.eks.url, "https://", "")
+
+  app_service_accounts = toset([
+    "catalog",
+    "cart",
+    "checkout",
+    "auth",
+    "admin",
+    "invoice-lambda",
+  ])
+
+  irsa_subjects = {
+    for service_account in local.app_service_accounts :
+    service_account => [
+      for namespace in var.irsa_namespaces :
+      "system:serviceaccount:${namespace}:${service_account}"
+    ]
+  }
 }
 
 # catalog service
@@ -188,8 +205,10 @@ resource "aws_iam_role" "irsa_catalog" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${local.oidc_provider_id}:sub" = "system:serviceaccount:shopcloud:catalog"
           "${local.oidc_provider_id}:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "${local.oidc_provider_id}:sub" = local.irsa_subjects["catalog"]
         }
       }
     }]
@@ -214,8 +233,10 @@ resource "aws_iam_role" "irsa_cart" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${local.oidc_provider_id}:sub" = "system:serviceaccount:shopcloud:cart"
           "${local.oidc_provider_id}:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "${local.oidc_provider_id}:sub" = local.irsa_subjects["cart"]
         }
       }
     }]
@@ -240,8 +261,10 @@ resource "aws_iam_role" "irsa_checkout" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${local.oidc_provider_id}:sub" = "system:serviceaccount:shopcloud:checkout"
           "${local.oidc_provider_id}:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "${local.oidc_provider_id}:sub" = local.irsa_subjects["checkout"]
         }
       }
     }]
@@ -266,8 +289,10 @@ resource "aws_iam_role" "irsa_auth" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${local.oidc_provider_id}:sub" = "system:serviceaccount:shopcloud:auth"
           "${local.oidc_provider_id}:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "${local.oidc_provider_id}:sub" = local.irsa_subjects["auth"]
         }
       }
     }]
@@ -292,8 +317,10 @@ resource "aws_iam_role" "irsa_admin" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${local.oidc_provider_id}:sub" = "system:serviceaccount:shopcloud:admin"
           "${local.oidc_provider_id}:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "${local.oidc_provider_id}:sub" = local.irsa_subjects["admin"]
         }
       }
     }]
@@ -318,8 +345,10 @@ resource "aws_iam_role" "irsa_invoice_lambda" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${local.oidc_provider_id}:sub" = "system:serviceaccount:shopcloud:invoice-lambda"
           "${local.oidc_provider_id}:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "${local.oidc_provider_id}:sub" = local.irsa_subjects["invoice-lambda"]
         }
       }
     }]

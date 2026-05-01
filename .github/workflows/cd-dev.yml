@@ -146,6 +146,7 @@ jobs:
         run: |
           kubectl apply -n $K8S_NAMESPACE \
             -f infra/k8s/namespace.yaml \
+            -f infra/k8s/serviceaccounts.yaml \
             -f infra/k8s/catalog.yaml \
             -f infra/k8s/cart.yaml \
             -f infra/k8s/checkout.yaml \

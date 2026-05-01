@@ -88,8 +88,36 @@ npm run format
 
 | Environment | RDS | Redis | EKS Nodes |
 |-------------|-----|-------|-----------|
-| `development` | Single-AZ `db.t3.micro` | Single-node `cache.t3.micro` | 1–3 × `t3.micro` |
-| `production` | Multi-AZ `db.t3.micro` + cross-region replica | 2-node `cache.t3.micro` | 2–6 × `t3.micro` |
+| `development` | Single-AZ `db.t3.micro` | Single-node `cache.t3.micro` | 1–2 × `m7i-flex.large` |
+| `production` | Multi-AZ `db.t3.micro` + cross-region replica | 2-node `cache.t3.micro` | 2–6 × `m7i-flex.large` |
+
+The current live AWS demo uses two Kubernetes namespaces in the same EKS cluster:
+
+- Production namespace: `shopcloud`
+- Development namespace: `shopcloud-dev`
+
+Production remains the live customer path. Development deploys independently from the `dev` branch and uses `dev-<sha>` image tags.
+
+### Live endpoints
+
+Production CloudFront:
+
+```text
+https://dc3jxbgwg4zpn.cloudfront.net/
+```
+
+Development is not routed under `/dev` on the production CloudFront distribution. It is exposed through the development frontend load balancer:
+
+```text
+http://a1aa3223b047a4de4a69d27daf1be91e-1248667715.us-east-1.elb.amazonaws.com/
+```
+
+Health checks:
+
+```bash
+curl http://a98f519c4af93425b99b2dc81d16f3e9-2102793419.us-east-1.elb.amazonaws.com/health
+curl http://a2925f4a964a541f5a9c67ff0c54c074-1231656343.us-east-1.elb.amazonaws.com/health
+```
 
 ### Deploy with Terraform
 
@@ -103,5 +131,40 @@ terraform apply
 ## CI/CD
 
 - **CI** (pull requests): unit tests, property-based tests, image build, CVE scan, secret scan, `terraform validate`
-- **CD-dev** (merge to main): push images to ECR, deploy to Development environment, integration tests
-- **CD-prod** (manual approval): push images to ECR, deploy to Production environment, smoke tests, auto-rollback on failure
+- **CD - Development Deploy** (`push` to `dev`): build images tagged `dev-<sha>`, deploy to `shopcloud-dev`, then run smoke tests
+- **CD - Production Deploy** (`push` to `main`): preserve the existing live deployment path into `shopcloud`
+- **CD - Production Promote** (`workflow_dispatch`): manually promote a known image tag to production with environment approval, smoke tests, and rollback on failure
+
+Production deployments use the GitHub `production` environment, which should keep required reviewer protection enabled. Development deployments use the GitHub `development` environment without required reviewers.
+
+### Invoice delivery
+
+Checkout stores the order with `pending` status, publishes an invoice event to SQS, and returns without waiting for PDF/email work. The invoice worker is an AWS Lambda function subscribed to the invoice queue. It writes PDFs to S3 and sends the customer a pre-signed download link through SES.
+
+SES requires the configured `ses_from_email` sender identity to be verified before invoices can be delivered. In an SES sandbox account, recipient addresses must also be verified or SES production access must be requested.
+
+### Rollback
+
+For a failed production promotion, the workflow automatically runs `kubectl rollout undo` for all application deployments and uploads a short-lived deployment snapshot artifact.
+
+Manual rollback for the live production namespace:
+
+```bash
+kubectl rollout undo deployment/catalog  -n shopcloud
+kubectl rollout undo deployment/cart     -n shopcloud
+kubectl rollout undo deployment/checkout -n shopcloud
+kubectl rollout undo deployment/auth     -n shopcloud
+kubectl rollout undo deployment/admin    -n shopcloud
+kubectl rollout undo deployment/frontend -n shopcloud
+```
+
+Manual rollback for development:
+
+```bash
+kubectl rollout undo deployment/catalog  -n shopcloud-dev
+kubectl rollout undo deployment/cart     -n shopcloud-dev
+kubectl rollout undo deployment/checkout -n shopcloud-dev
+kubectl rollout undo deployment/auth     -n shopcloud-dev
+kubectl rollout undo deployment/admin    -n shopcloud-dev
+kubectl rollout undo deployment/frontend -n shopcloud-dev
+```

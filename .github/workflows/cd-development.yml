@@ -129,6 +129,7 @@ jobs:
       - name: Apply manifest changes
         run: |
           kubectl apply -f rendered-k8s/namespace.yaml
+          kubectl apply -f rendered-k8s/serviceaccounts.yaml
           kubectl apply -n $K8S_NAMESPACE \
             -f rendered-k8s/catalog.yaml \
             -f rendered-k8s/cart.yaml \

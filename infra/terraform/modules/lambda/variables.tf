@@ -28,6 +28,11 @@ variable "s3_bucket_arn" {
   type        = string
 }
 
+variable "s3_bucket_name" {
+  description = "Name of the S3 invoice bucket used by the Lambda runtime"
+  type        = string
+}
+
 variable "kms_key_arn" {
   description = "ARN of the KMS key used for decryption"
   type        = string
