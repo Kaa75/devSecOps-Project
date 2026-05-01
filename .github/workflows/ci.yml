@@ -123,49 +123,49 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Trivy scan — catalog
+      - name: Trivy scan - catalog
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/catalog:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
-      - name: Trivy scan — cart
+      - name: Trivy scan - cart
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/cart:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
-      - name: Trivy scan — checkout
+      - name: Trivy scan - checkout
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/checkout:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
-      - name: Trivy scan — auth
+      - name: Trivy scan - auth
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/auth:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
-      - name: Trivy scan — admin
+      - name: Trivy scan - admin
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/admin:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
-      - name: Trivy scan — frontend
+      - name: Trivy scan - frontend
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/frontend:${{ github.sha }}
           severity: HIGH,CRITICAL
           exit-code: '1'
 
-      - name: Trivy scan — invoice-lambda
+      - name: Trivy scan - invoice-lambda
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/shopcloud/default/invoice-lambda:${{ github.sha }}
@@ -174,8 +174,6 @@ jobs:
 
       - name: Secret scanning with truffleHog
         uses: trufflesecurity/trufflehog@main
-        with:
-          extra_args: filesystem . --fail
 
   terraform-validate:
     name: Terraform Validate

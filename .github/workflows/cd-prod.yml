@@ -1,4 +1,4 @@
-name: CD — Production Promote
+name: CD - Production Promote
 
 on:
   workflow_dispatch:
@@ -25,11 +25,16 @@ jobs:
     name: Tag as Production & Deploy
     runs-on: ubuntu-latest
     needs: approve
+    environment: production
     env:
       ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
       SHA_TAG: ${{ github.event.inputs.image_tag }}
       PROD_TAG: prod-${{ github.event.inputs.image_tag }}
+      K8S_NAMESPACE: shopcloud
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -38,6 +43,28 @@ jobs:
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Validate AWS secrets and image existence
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          CD_PROD_ROLE_ARN: ${{ secrets.CD_PROD_ROLE_ARN }}
+        run: |
+          missing=()
+          [[ -z "$AWS_ACCOUNT_ID" ]] && missing+=("AWS_ACCOUNT_ID")
+          [[ -z "$CD_PROD_ROLE_ARN" ]] && missing+=("CD_PROD_ROLE_ARN")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "ERROR: The following GitHub Secrets are not set: ${missing[*]}"
+            exit 1
+          fi
+
+          echo "Validating source images exist in ECR..."
+          for service in catalog cart checkout auth admin frontend invoice-lambda; do
+            if ! docker pull "$ECR_REGISTRY/shopcloud/default/$service:$SHA_TAG"; then
+              echo "ERROR: Image not found: $ECR_REGISTRY/shopcloud/default/$service:$SHA_TAG"
+              exit 1
+            fi
+          done
+          echo "✅ All source images validated"
 
       - name: Re-tag catalog as production
         run: |
@@ -88,11 +115,113 @@ jobs:
                       $ECR_REGISTRY/shopcloud/default/invoice-lambda:$PROD_TAG
           docker push $ECR_REGISTRY/shopcloud/default/invoice-lambda:$PROD_TAG
 
+      - name: Scan catalog production image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/shopcloud/default/catalog:${{ env.PROD_TAG }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+      - name: Scan cart production image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/shopcloud/default/cart:${{ env.PROD_TAG }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+      - name: Scan checkout production image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/shopcloud/default/checkout:${{ env.PROD_TAG }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+      - name: Scan auth production image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/shopcloud/default/auth:${{ env.PROD_TAG }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+      - name: Scan admin production image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/shopcloud/default/admin:${{ env.PROD_TAG }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+      - name: Scan frontend production image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/shopcloud/default/frontend:${{ env.PROD_TAG }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+      - name: Scan invoice-lambda production image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/shopcloud/default/invoice-lambda:${{ env.PROD_TAG }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name shopcloud-default --region us-east-1
 
+      - name: Ensure target namespace exists
+        run: kubectl create namespace $K8S_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Validate Cognito secrets are set
+        env:
+          COGNITO_CUSTOMER_CLIENT_ID: ${{ secrets.COGNITO_CUSTOMER_CLIENT_ID }}
+          COGNITO_ADMIN_CLIENT_ID: ${{ secrets.COGNITO_ADMIN_CLIENT_ID }}
+          COGNITO_CUSTOMER_POOL_ID: ${{ secrets.COGNITO_CUSTOMER_POOL_ID }}
+          COGNITO_ADMIN_POOL_ID: ${{ secrets.COGNITO_ADMIN_POOL_ID }}
+        run: |
+          missing=()
+          [[ -z "$COGNITO_CUSTOMER_CLIENT_ID" ]] && missing+=("COGNITO_CUSTOMER_CLIENT_ID")
+          [[ -z "$COGNITO_ADMIN_CLIENT_ID" ]] && missing+=("COGNITO_ADMIN_CLIENT_ID")
+          [[ -z "$COGNITO_CUSTOMER_POOL_ID" ]] && missing+=("COGNITO_CUSTOMER_POOL_ID")
+          [[ -z "$COGNITO_ADMIN_POOL_ID" ]] && missing+=("COGNITO_ADMIN_POOL_ID")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "ERROR: The following GitHub Secrets are not set for production: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Sync Cognito IDs into shopcloud-secrets
+        env:
+          COGNITO_CUSTOMER_CLIENT_ID: ${{ secrets.COGNITO_CUSTOMER_CLIENT_ID }}
+          COGNITO_ADMIN_CLIENT_ID: ${{ secrets.COGNITO_ADMIN_CLIENT_ID }}
+          COGNITO_CUSTOMER_POOL_ID: ${{ secrets.COGNITO_CUSTOMER_POOL_ID }}
+          COGNITO_ADMIN_POOL_ID: ${{ secrets.COGNITO_ADMIN_POOL_ID }}
+        run: |
+          if ! kubectl get secret shopcloud-secrets -n $K8S_NAMESPACE >/dev/null 2>&1; then
+            echo "ERROR: Kubernetes secret shopcloud-secrets does not exist in namespace $K8S_NAMESPACE."
+            echo "Create it with DATABASE_URL, JWT_SECRET, REDIS_URL, SQS_QUEUE_URL, and CLOUDFRONT_DOMAIN before deploying."
+            exit 1
+          fi
+          kubectl patch secret shopcloud-secrets -n $K8S_NAMESPACE \
+            -p "{\"stringData\":{
+              \"COGNITO_CUSTOMER_CLIENT_ID\":\"$COGNITO_CUSTOMER_CLIENT_ID\",
+              \"COGNITO_ADMIN_CLIENT_ID\":\"$COGNITO_ADMIN_CLIENT_ID\",
+              \"COGNITO_CUSTOMER_POOL_ID\":\"$COGNITO_CUSTOMER_POOL_ID\",
+              \"COGNITO_ADMIN_POOL_ID\":\"$COGNITO_ADMIN_POOL_ID\"
+            }}"
+
+      - name: Validate Kubernetes app secret keys
+        run: |
+          missing=()
+          for key in DATABASE_URL JWT_SECRET REDIS_URL SQS_QUEUE_URL CLOUDFRONT_DOMAIN; do
+            value=$(kubectl get secret shopcloud-secrets -n $K8S_NAMESPACE -o "jsonpath={.data.$key}" 2>/dev/null || true)
+            [[ -z "$value" ]] && missing+=("$key")
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "ERROR: Kubernetes secret shopcloud-secrets in namespace $K8S_NAMESPACE is missing keys: ${missing[*]}"
+            echo "Create these keys before deploying so pods can start successfully."
+            exit 1
+          fi
+
       - name: Save rollback snapshot
-        run: kubectl get deployment -n shopcloud -o json > previous-deployments.json
+        run: kubectl get deployment -n $K8S_NAMESPACE -o json > previous-deployments.json || printf '{"items":[]}\n' > previous-deployments.json
 
       - name: Upload rollback snapshot
         uses: actions/upload-artifact@v4
@@ -101,97 +230,166 @@ jobs:
           path: previous-deployments.json
           retention-days: 7
 
+      - name: Render manifests for production namespace
+        run: |
+          mkdir -p rendered-k8s
+          cp infra/k8s/*.yaml rendered-k8s/
+          perl -pi -e 's/namespace: shopcloud/namespace: $ENV{K8S_NAMESPACE}/g; s/name: shopcloud$/name: $ENV{K8S_NAMESPACE}/g; s#image:\s*\S+/shopcloud/default/([a-z-]+):\S+#image: $ENV{ECR_REGISTRY}/shopcloud/default/$1:$ENV{PROD_TAG}#g' rendered-k8s/*.yaml
+
+      - name: Apply manifest changes
+        run: |
+          kubectl apply -f rendered-k8s/namespace.yaml
+          kubectl apply -n $K8S_NAMESPACE \
+            -f rendered-k8s/catalog.yaml \
+            -f rendered-k8s/cart.yaml \
+            -f rendered-k8s/checkout.yaml \
+            -f rendered-k8s/auth.yaml \
+            -f rendered-k8s/admin.yaml \
+            -f rendered-k8s/frontend.yaml \
+            -f rendered-k8s/hpa.yaml \
+            -f rendered-k8s/network-policies.yaml
+          kubectl apply -f rendered-k8s/fluent-bit.yaml
+
       - name: Deploy all services
         run: |
-          kubectl set image deployment/catalog  catalog=$ECR_REGISTRY/shopcloud/default/catalog:$PROD_TAG  -n shopcloud
-          kubectl set image deployment/cart     cart=$ECR_REGISTRY/shopcloud/default/cart:$PROD_TAG        -n shopcloud
-          kubectl set image deployment/checkout checkout=$ECR_REGISTRY/shopcloud/default/checkout:$PROD_TAG -n shopcloud
-          kubectl set image deployment/auth     auth=$ECR_REGISTRY/shopcloud/default/auth:$PROD_TAG        -n shopcloud
-          kubectl set image deployment/admin    admin=$ECR_REGISTRY/shopcloud/default/admin:$PROD_TAG      -n shopcloud
-          kubectl set image deployment/frontend frontend=$ECR_REGISTRY/shopcloud/default/frontend:$PROD_TAG -n shopcloud
+          kubectl set image deployment/catalog  catalog=$ECR_REGISTRY/shopcloud/default/catalog:$PROD_TAG  -n $K8S_NAMESPACE
+          kubectl set image deployment/cart     cart=$ECR_REGISTRY/shopcloud/default/cart:$PROD_TAG        -n $K8S_NAMESPACE
+          kubectl set image deployment/checkout checkout=$ECR_REGISTRY/shopcloud/default/checkout:$PROD_TAG -n $K8S_NAMESPACE
+          kubectl set image deployment/auth     auth=$ECR_REGISTRY/shopcloud/default/auth:$PROD_TAG        -n $K8S_NAMESPACE
+          kubectl set image deployment/admin    admin=$ECR_REGISTRY/shopcloud/default/admin:$PROD_TAG      -n $K8S_NAMESPACE
+          kubectl set image deployment/frontend frontend=$ECR_REGISTRY/shopcloud/default/frontend:$PROD_TAG -n $K8S_NAMESPACE
 
       - name: Wait for rollouts
         id: rollouts
         run: |
-          kubectl rollout status deployment/catalog  -n shopcloud --timeout=5m
-          kubectl rollout status deployment/cart     -n shopcloud --timeout=5m
-          kubectl rollout status deployment/checkout -n shopcloud --timeout=5m
-          kubectl rollout status deployment/auth     -n shopcloud --timeout=5m
-          kubectl rollout status deployment/admin    -n shopcloud --timeout=5m
-          kubectl rollout status deployment/frontend -n shopcloud --timeout=5m
+          kubectl rollout status deployment/catalog  -n $K8S_NAMESPACE --timeout=5m
+          kubectl rollout status deployment/cart     -n $K8S_NAMESPACE --timeout=5m
+          kubectl rollout status deployment/checkout -n $K8S_NAMESPACE --timeout=5m
+          kubectl rollout status deployment/auth     -n $K8S_NAMESPACE --timeout=5m
+          kubectl rollout status deployment/admin    -n $K8S_NAMESPACE --timeout=5m
+          kubectl rollout status deployment/frontend -n $K8S_NAMESPACE --timeout=5m
         continue-on-error: true
 
       - name: Rollback on failure
         if: steps.rollouts.outcome == 'failure'
         run: |
-          kubectl rollout undo deployment/catalog  -n shopcloud
-          kubectl rollout undo deployment/cart     -n shopcloud
-          kubectl rollout undo deployment/checkout -n shopcloud
-          kubectl rollout undo deployment/auth     -n shopcloud
-          kubectl rollout undo deployment/admin    -n shopcloud
-          kubectl rollout undo deployment/frontend -n shopcloud
+          kubectl rollout undo deployment/catalog  -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/cart     -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/checkout -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/auth     -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/admin    -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/frontend -n $K8S_NAMESPACE
           exit 1
 
   smoke-tests:
     name: Production Smoke Tests
     runs-on: ubuntu-latest
     needs: tag-and-deploy
+    environment: production
+    env:
+      K8S_NAMESPACE: shopcloud
     steps:
-      - name: Health check — catalog
-        id: smoke-catalog
-        run: curl --fail --retry 5 --retry-delay 15 http://a98f519c4af93425b99b2dc81d16f3e9-2102793419.us-east-1.elb.amazonaws.com/health
-        continue-on-error: true
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Health check — cart
-        id: smoke-cart
-        run: curl --fail --retry 5 --retry-delay 15 http://ada019bcb0d9c444ea2a19d3deb7742f-1088426612.us-east-1.elb.amazonaws.com/health
-        continue-on-error: true
-
-      - name: Health check — checkout
-        id: smoke-checkout
-        run: curl --fail --retry 5 --retry-delay 15 http://a185d62bc3d6f405085e9a71e05d3a57-9741275.us-east-1.elb.amazonaws.com/health
-        continue-on-error: true
-
-      - name: Health check — auth
-        id: smoke-auth
-        run: curl --fail --retry 5 --retry-delay 15 http://ae47051d5b5e74c65b6fca095b2dfbcb-1596725155.us-east-1.elb.amazonaws.com/health
-        continue-on-error: true
-
-      - name: Rollback on smoke test failure
-        if: |
-          steps.smoke-catalog.outcome == 'failure' ||
-          steps.smoke-cart.outcome == 'failure' ||
-          steps.smoke-checkout.outcome == 'failure' ||
-          steps.smoke-auth.outcome == 'failure'
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.CD_PROD_ROLE_ARN }}
           aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name shopcloud-default --region us-east-1
+
+      - name: Validate Slack webhook is set
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [[ -z "$SLACK_WEBHOOK_URL" ]]; then
+            echo "WARNING: SLACK_WEBHOOK_URL not set. Notifications will be skipped."
+          fi
+
+      - name: Health check — catalog
+        id: smoke-catalog
+        run: |
+          ENDPOINT=$(kubectl get svc catalog -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          [[ -z "$ENDPOINT" ]] && ENDPOINT=$(kubectl get svc catalog -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl --fail --retry 5 --retry-delay 15 "http://$ENDPOINT/health"
+        continue-on-error: true
+
+      - name: Health check — cart
+        id: smoke-cart
+        run: |
+          ENDPOINT=$(kubectl get svc cart -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          [[ -z "$ENDPOINT" ]] && ENDPOINT=$(kubectl get svc cart -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl --fail --retry 5 --retry-delay 15 "http://$ENDPOINT/health"
+        continue-on-error: true
+
+      - name: Health check — checkout
+        id: smoke-checkout
+        run: |
+          ENDPOINT=$(kubectl get svc checkout -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          [[ -z "$ENDPOINT" ]] && ENDPOINT=$(kubectl get svc checkout -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl --fail --retry 5 --retry-delay 15 "http://$ENDPOINT/health"
+        continue-on-error: true
+
+      - name: Health check — auth
+        id: smoke-auth
+        run: |
+          ENDPOINT=$(kubectl get svc auth -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          [[ -z "$ENDPOINT" ]] && ENDPOINT=$(kubectl get svc auth -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl --fail --retry 5 --retry-delay 15 "http://$ENDPOINT/health"
+        continue-on-error: true
+
+      - name: Health check — admin
+        id: smoke-admin
+        run: |
+          ENDPOINT=$(kubectl get svc admin -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          [[ -z "$ENDPOINT" ]] && ENDPOINT=$(kubectl get svc admin -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl --fail --retry 5 --retry-delay 15 "http://$ENDPOINT/health"
+        continue-on-error: true
+
+      - name: Health check — frontend
+        id: smoke-frontend
+        run: |
+          ENDPOINT=$(kubectl get svc frontend -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          [[ -z "$ENDPOINT" ]] && ENDPOINT=$(kubectl get svc frontend -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl --fail --retry 5 --retry-delay 15 "http://$ENDPOINT/"
+        continue-on-error: true
 
       - name: Rollback deployments on smoke failure
         if: |
           steps.smoke-catalog.outcome == 'failure' ||
           steps.smoke-cart.outcome == 'failure' ||
           steps.smoke-checkout.outcome == 'failure' ||
-          steps.smoke-auth.outcome == 'failure'
+          steps.smoke-auth.outcome == 'failure' ||
+          steps.smoke-admin.outcome == 'failure' ||
+          steps.smoke-frontend.outcome == 'failure'
         run: |
-          aws eks update-kubeconfig --name shopcloud-default --region us-east-1
-          kubectl rollout undo deployment/catalog  -n shopcloud
-          kubectl rollout undo deployment/cart     -n shopcloud
-          kubectl rollout undo deployment/checkout -n shopcloud
-          kubectl rollout undo deployment/auth     -n shopcloud
-          kubectl rollout undo deployment/admin    -n shopcloud
-          kubectl rollout undo deployment/frontend -n shopcloud
+          echo "🚨 Smoke tests failed. Rolling back all deployments..."
+          kubectl rollout undo deployment/catalog  -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/cart     -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/checkout -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/auth     -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/admin    -n $K8S_NAMESPACE
+          kubectl rollout undo deployment/frontend -n $K8S_NAMESPACE
+          exit 1
 
       - name: Notify Slack — success
         if: >
           steps.smoke-catalog.outcome == 'success' &&
           steps.smoke-cart.outcome == 'success' &&
           steps.smoke-checkout.outcome == 'success' &&
-          steps.smoke-auth.outcome == 'success'
+          steps.smoke-auth.outcome == 'success' &&
+          steps.smoke-admin.outcome == 'success' &&
+          steps.smoke-frontend.outcome == 'success'
         run: |
+          if [[ -z "${{ secrets.SLACK_WEBHOOK_URL }}" ]]; then
+            echo "Skipping Slack notification (webhook not configured)"
+            exit 0
+          fi
           curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"✅ Production deployment SUCCEEDED for tag \`${{ github.event.inputs.image_tag }}\`. Triggered by: ${{ github.actor }}\"}" \
+            --data "{\"text\":\"✅ Production deployment SUCCEEDED for tag \\\`${{ github.event.inputs.image_tag }}\\\`. All smoke tests passed. Triggered by: ${{ github.actor }}\"}" \
             ${{ secrets.SLACK_WEBHOOK_URL }}
 
       - name: Notify Slack — failure
@@ -199,9 +397,15 @@ jobs:
           steps.smoke-catalog.outcome == 'failure' ||
           steps.smoke-cart.outcome == 'failure' ||
           steps.smoke-checkout.outcome == 'failure' ||
-          steps.smoke-auth.outcome == 'failure'
+          steps.smoke-auth.outcome == 'failure' ||
+          steps.smoke-admin.outcome == 'failure' ||
+          steps.smoke-frontend.outcome == 'failure'
         run: |
+          if [[ -z "${{ secrets.SLACK_WEBHOOK_URL }}" ]]; then
+            echo "Skipping Slack notification (webhook not configured)"
+            exit 0
+          fi
           curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"🚨 Production smoke tests FAILED for tag \`${{ github.event.inputs.image_tag }}\`. Rollback initiated. Triggered by: ${{ github.actor }}\"}" \
+            --data "{\"text\":\"🚨 Production smoke tests FAILED for tag \\\`${{ github.event.inputs.image_tag }}\\\`. Rollback initiated. Triggered by: ${{ github.actor }}\"}" \
             ${{ secrets.SLACK_WEBHOOK_URL }}
           exit 1
