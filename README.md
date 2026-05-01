@@ -98,6 +98,20 @@ The current live AWS demo uses two Kubernetes namespaces in the same EKS cluster
 
 Production remains the live customer path. Development deploys independently from the `dev` branch and uses `dev-<sha>` image tags.
 
+To deploy the current local branch to development only:
+
+```bash
+git push origin HEAD:dev
+```
+
+To refresh development from the latest production branch after a merge:
+
+```bash
+git push origin main:dev
+```
+
+Production updates only from `main` through `CD - Production Deploy`, or through the manual `CD - Production Promote` workflow.
+
 ### Live endpoints
 
 Production CloudFront:
@@ -142,6 +156,15 @@ Production deployments use the GitHub `production` environment, which should kee
 Checkout stores the order with `pending` status, publishes an invoice event to SQS, and returns without waiting for PDF/email work. The invoice worker is an AWS Lambda function subscribed to the invoice queue. It writes PDFs to S3 and sends the customer a pre-signed download link through SES.
 
 SES requires the configured `ses_from_email` sender identity to be verified before invoices can be delivered. In an SES sandbox account, recipient addresses must also be verified or SES production access must be requested.
+
+The Lambda, SQS event source mapping, S3 bucket configuration, and SES identity are managed in Terraform. After changing this infrastructure, run `terraform apply` for the target workspace; Kubernetes deploy workflows only update EKS workloads and container images.
+
+### Known follow-up work
+
+- Apply the merged Terraform invoice changes so AWS creates/updates the invoice Lambda and SQS trigger.
+- Verify the SES sender identity configured by `ses_from_email`; if the account is in SES sandbox, verify test recipient addresses too or request SES production access.
+- Restrict the `admin` service so it is not publicly reachable. The intended architecture is private admin access through VPN and an internal load balancer, not public `LoadBalancer` services.
+- Keep production reviewer protection enabled in the GitHub `production` environment.
 
 ### Rollback
 
