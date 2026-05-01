@@ -132,6 +132,23 @@ module "sqs" {
   owner       = var.owner
 }
 
+resource "aws_iam_role_policy" "checkout_invoice_publish" {
+  name = "${var.project}-${terraform.workspace}-checkout-invoice-publish"
+  role = "${var.project}-${terraform.workspace}-irsa-checkout"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "AllowInvoiceQueuePublish"
+      Effect   = "Allow"
+      Action   = "sqs:SendMessage"
+      Resource = module.sqs.queue_arn
+    }]
+  })
+
+  depends_on = [module.eks]
+}
+
 # ─── S3 ──────────────────────────────────────────────────────────────────────
 
 module "s3" {
