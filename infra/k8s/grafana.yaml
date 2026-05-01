@@ -99,6 +99,8 @@ data:
               "statistic": "Sum",
               "period": "300",
               "region": "us-east-1",
+              "queryMode": "Metrics",
+              "metricEditorMode": 0,
               "metricQueryType": 0,
               "matchExact": true
             }
@@ -119,6 +121,8 @@ data:
               "statistic": "Sum",
               "period": "300",
               "region": "us-east-1",
+              "queryMode": "Metrics",
+              "metricEditorMode": 0,
               "metricQueryType": 0,
               "matchExact": true
             }
@@ -139,6 +143,8 @@ data:
               "statistic": "Average",
               "period": "300",
               "region": "us-east-1",
+              "queryMode": "Metrics",
+              "metricEditorMode": 0,
               "metricQueryType": 0,
               "matchExact": true
             }
@@ -159,6 +165,8 @@ data:
               "statistic": "Sum",
               "period": "300",
               "region": "us-east-1",
+              "queryMode": "Metrics",
+              "metricEditorMode": 0,
               "metricQueryType": 0,
               "matchExact": true
             }
