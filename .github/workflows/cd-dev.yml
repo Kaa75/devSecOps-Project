@@ -184,6 +184,12 @@ jobs:
           kubectl rollout status deployment/admin    -n $K8S_NAMESPACE --timeout=5m
           kubectl rollout status deployment/frontend -n $K8S_NAMESPACE --timeout=5m
 
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+
   smoke-tests:
     name: Production Smoke Tests
     runs-on: ubuntu-latest
