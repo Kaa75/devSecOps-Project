@@ -159,11 +159,65 @@ SES requires the configured `ses_from_email` sender identity to be verified befo
 
 The Lambda, SQS event source mapping, S3 bucket configuration, and SES identity are managed in Terraform. After changing this infrastructure, run `terraform apply` for the target workspace; Kubernetes deploy workflows only update EKS workloads and container images.
 
+## Monitoring, Security, and Grafana
+
+ShopCloud includes AWS-native monitoring and security controls plus an optional internal Grafana dashboard for demo evidence.
+
+Implemented controls:
+
+- CloudWatch dashboard for application, infrastructure, and invoice metrics
+- CloudWatch alarms with SNS notification support
+- SQS invoice DLQ alarm
+- Lambda logs for invoice generation
+- X-Ray tracing sidecars for Node.js services
+- Fluent Bit log shipping to CloudWatch Logs
+- WAF attached to the production CloudFront distribution
+- GuardDuty Terraform module for HIGH/CRITICAL finding alerting
+- TruffleHog secret scanning in CI
+- Trivy image scanning in CD
+- Internal-only admin service and blocked public `/api/admin/` route
+
+Grafana is deployed as an internal `ClusterIP` service in the `monitoring` namespace. It is not exposed publicly. It uses IRSA role `shopcloud-default-irsa-grafana` to read CloudWatch and X-Ray telemetry without static AWS keys.
+
+Create or rotate the Grafana admin secret before applying the manifest:
+
+```bash
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic grafana-admin \
+  -n monitoring \
+  --from-literal=admin-user=admin \
+  --from-literal=admin-password='<strong-demo-password>' \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Deploy Grafana:
+
+```bash
+terraform -chdir=infra/terraform apply
+kubectl apply -f infra/k8s/grafana.yaml
+kubectl rollout status deployment/grafana -n monitoring
+```
+
+Open Grafana locally through port-forwarding:
+
+```bash
+kubectl port-forward -n monitoring svc/grafana 3000:3000
+```
+
+Then browse to:
+
+```text
+http://localhost:3000
+```
+
+The starter dashboard is named `ShopCloud Security & Monitoring` and includes invoice queue depth, invoice Lambda errors/duration, CloudFront request telemetry, and a monitoring evidence panel. For screenshots, also capture CloudWatch alarms, Lambda logs, WAF Web ACL, CI/CD Trivy/TruffleHog runs, and the internal-only admin service.
+
 ### Known follow-up work
 
-- Apply the merged Terraform invoice changes so AWS creates/updates the invoice Lambda and SQS trigger.
+- Set `ses_from_email` to a real SES-verifiable sender address before applying invoice Lambda infrastructure; placeholder `.local` senders are rejected by Terraform validation.
+- Apply the merged Terraform invoice changes so AWS creates/updates the invoice Lambda and SQS trigger after the SES sender value is corrected.
 - Verify the SES sender identity configured by `ses_from_email`; if the account is in SES sandbox, verify test recipient addresses too or request SES production access.
-- Restrict the `admin` service so it is not publicly reachable. The intended architecture is private admin access through VPN and an internal load balancer, not public `LoadBalancer` services.
+- Keep the `admin` API off the public storefront path. The durable config returns 404 for `/api/admin/`, and the admin Kubernetes service is internal-only.
 - Keep production reviewer protection enabled in the GitHub `production` environment.
 
 ### Rollback

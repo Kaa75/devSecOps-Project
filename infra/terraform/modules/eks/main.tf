@@ -126,6 +126,11 @@ resource "aws_iam_role_policy_attachment" "eks_ecr_readonly" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+resource "aws_iam_role_policy_attachment" "eks_xray_write" {
+  role       = aws_iam_role.eks_node_group.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
 # ─── Managed Node Group ───────────────────────────────────────────────────────
 
 resource "aws_eks_node_group" "main" {
@@ -147,6 +152,7 @@ resource "aws_eks_node_group" "main" {
     aws_iam_role_policy_attachment.eks_worker_node_policy,
     aws_iam_role_policy_attachment.eks_cni_policy,
     aws_iam_role_policy_attachment.eks_ecr_readonly,
+    aws_iam_role_policy_attachment.eks_xray_write,
   ]
 
   tags = merge(local.common_tags, {

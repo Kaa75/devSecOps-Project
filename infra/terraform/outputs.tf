@@ -74,3 +74,8 @@ output "cloudwatch_dashboard_name" {
   description = "Name of the CloudWatch dashboard"
   value       = module.cloudwatch_dashboard.dashboard_name
 }
+
+output "grafana_irsa_role_arn" {
+  description = "IAM role ARN used by the internal Grafana deployment to read CloudWatch and X-Ray"
+  value       = aws_iam_role.grafana_irsa.arn
+}

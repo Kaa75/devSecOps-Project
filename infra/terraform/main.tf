@@ -132,6 +132,23 @@ module "sqs" {
   owner       = var.owner
 }
 
+resource "aws_iam_role_policy" "checkout_invoice_publish" {
+  name = "${var.project}-${terraform.workspace}-checkout-invoice-publish"
+  role = "${var.project}-${terraform.workspace}-irsa-checkout"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "AllowInvoiceQueuePublish"
+      Effect   = "Allow"
+      Action   = "sqs:SendMessage"
+      Resource = module.sqs.queue_arn
+    }]
+  })
+
+  depends_on = [module.eks]
+}
+
 # ─── S3 ──────────────────────────────────────────────────────────────────────
 
 module "s3" {
@@ -237,6 +254,37 @@ module "xray" {
   project     = var.project
   environment = terraform.workspace
   owner       = var.owner
+}
+
+resource "aws_iam_role" "grafana_irsa" {
+  name = "${var.project}-${terraform.workspace}-irsa-grafana"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = module.eks.oidc_provider_arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${replace(module.eks.oidc_provider_url, "https://", "")}:aud" = "sts.amazonaws.com"
+          "${replace(module.eks.oidc_provider_url, "https://", "")}:sub" = "system:serviceaccount:monitoring:grafana"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "grafana_cloudwatch_readonly" {
+  role       = aws_iam_role.grafana_irsa.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "grafana_xray_readonly" {
+  role       = aws_iam_role.grafana_irsa.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayReadOnlyAccess"
 }
 
 # ─── CloudWatch Dashboard ─────────────────────────────────────────────────────
