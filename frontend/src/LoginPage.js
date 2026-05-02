@@ -89,7 +89,7 @@ export default function LoginPage({ onAuth }) {
       } else {
         const endpoint = tab === 'admin' ? '/admin/login' : '/login';
         const data = await post(endpoint, { email, password });
-        const token = data.accessToken || data.idToken || data.token;
+        const token = data.idToken || data.accessToken || data.token;
         persist({ token, email, isAdmin: tab === 'admin' });
       }
     } catch (err) {
