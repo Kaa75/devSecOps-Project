@@ -18,3 +18,19 @@ resource "aws_iam_role_policy" "cd_dev_cognito" {
     }]
   })
 }
+
+resource "aws_iam_role_policy" "cd_prod_cloudfront" {
+  name = "cloudfront-invalidate"
+  role = "shopcloud-cd-prod"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["cloudfront:CreateInvalidation"]
+      Resource = ["arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"]
+    }]
+  })
+}
+
+data "aws_caller_identity" "current" {}
