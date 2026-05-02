@@ -230,9 +230,9 @@ jobs:
 
       - name: Health check - admin
         run: |
-          ENDPOINT=$(kubectl get svc admin -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          [[ -z "$ENDPOINT" ]] && ENDPOINT=$(kubectl get svc admin -n $K8S_NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          curl --fail --retry 5 --retry-delay 10 "http://$ENDPOINT/health"
+          kubectl run admin-health-check --rm -i --restart=Never \
+            --image=curlimages/curl -n $K8S_NAMESPACE \
+            -- curl -sf http://admin/health
 
       - name: Health check - frontend
         run: |
